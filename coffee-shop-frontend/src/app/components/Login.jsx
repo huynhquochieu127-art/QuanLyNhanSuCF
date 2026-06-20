@@ -12,6 +12,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isRegister, setIsRegister] = useState(false); // Chế độ Đăng ký
+  const [fullName, setFullName] = useState(""); // Họ tên khi Đăng ký
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -19,31 +21,55 @@ export default function Login() {
     e.preventDefault();
     
     try {
-      const promise = axios.post('http://localhost:5000/api/auth/login', {
-        Email: email,
-        MatKhau: password
-      });
+      if (isRegister) {
+        // Mode Đăng ký
+        const promise = axios.post('http://localhost:5000/api/auth/register', {
+          HoTen: fullName,
+          Email: email,
+          MatKhau: password
+        });
 
-      toast.promise(promise, {
-        loading: t("login_loading") || "Đang xử lý...",
-        success: (res) => {
-          // Lưu token và thông tin user vào localStorage
-          localStorage.setItem('token', res.data.token);
-          localStorage.setItem('user', JSON.stringify(res.data.user));
-          
-          setTimeout(() => {
-            navigate("/");
-          }, 1000);
+        toast.promise(promise, {
+          loading: "Đang xử lý đăng ký tài khoản...",
+          success: (res) => {
+            // Thành công, tự động chuyển về chế độ Đăng nhập
+            setIsRegister(false);
+            setFullName("");
+            setPassword("");
+            return res.data.message || "Đăng ký tài khoản nhân viên thành công!";
+          },
+          error: (err) => {
+            return err.response?.data?.message || "Đăng ký thất bại!";
+          },
+        });
+      } else {
+        // Mode Đăng nhập
+        const promise = axios.post('http://localhost:5000/api/auth/login', {
+          Email: email,
+          MatKhau: password
+        });
 
-          return res.data.message || t("login_success") || "Đăng nhập thành công!";
-        },
-        error: (err) => {
-          return err.response?.data?.message || t("login_failed") || "Đăng nhập thất bại!";
-        },
-      });
+        toast.promise(promise, {
+          loading: t("login_loading") || "Đang xử lý...",
+          success: (res) => {
+            // Lưu token và thông tin user vào localStorage
+            localStorage.setItem('token', res.data.token);
+            localStorage.setItem('user', JSON.stringify(res.data.user));
+            
+            setTimeout(() => {
+              navigate("/");
+            }, 1000);
+
+            return res.data.message || t("login_success") || "Đăng nhập thành công!";
+          },
+          error: (err) => {
+            return err.response?.data?.message || t("login_failed") || "Đăng nhập thất bại!";
+          },
+        });
+      }
 
     } catch (error) {
-      console.error("Lỗi đăng nhập:", error);
+      console.error("Lỗi xử lý form:", error);
     }
   };
 
@@ -93,11 +119,29 @@ export default function Login() {
             >
               <Coffee className="w-8 h-8 text-white" />
             </motion.div>
-            <h1 className="text-3xl font-extrabold text-amber-900 dark:text-amber-500 tracking-tight mb-2">{t("login_title")}</h1>
-            <p className="text-amber-700/80 dark:text-amber-600">{t("login_sign_in")}</p>
+            <h1 className="text-3xl font-extrabold text-amber-900 dark:text-amber-500 tracking-tight mb-2">
+              {isRegister ? "Đăng ký Nhân viên" : t("login_title")}
+            </h1>
+            <p className="text-amber-700/80 dark:text-amber-600">
+              {isRegister ? "Tạo tài khoản nhân viên của bạn" : t("login_sign_in")}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl shadow-xl dark:shadow-black/40 border border-white/20 dark:border-zinc-800/40 p-8 space-y-5">
+            {isRegister && (
+              <div>
+                <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">Họ và Tên</label>
+                <input
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Nguyễn Văn A"
+                  className="w-full px-4 py-3 border border-amber-200 dark:border-zinc-800 rounded-xl bg-amber-50/20 dark:bg-zinc-950/30 text-gray-800 dark:text-zinc-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-600 focus:border-transparent transition-all"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">{t("login_email")}</label>
               <input
@@ -133,20 +177,22 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4.5 h-4.5 text-amber-600 border-amber-200 rounded focus:ring-amber-500 dark:focus:ring-amber-600 dark:bg-zinc-950 dark:border-zinc-850"
-                />
-                <span className="ml-2 text-sm text-gray-600 dark:text-zinc-400 font-medium">{t("login_remember")}</span>
-              </label>
-              <Link to="/" className="text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline">
-                {t("login_forgot")}
-              </Link>
-            </div>
+            {!isRegister && (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4.5 h-4.5 text-amber-600 border-amber-200 rounded focus:ring-amber-500 dark:focus:ring-amber-600 dark:bg-zinc-950 dark:border-zinc-850"
+                  />
+                  <span className="ml-2 text-sm text-gray-600 dark:text-zinc-400 font-medium">{t("login_remember")}</span>
+                </label>
+                <Link to="/" className="text-sm font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline">
+                  {t("login_forgot")}
+                </Link>
+              </div>
+            )}
 
             <motion.button
               whileHover={{ scale: 1.015 }}
@@ -154,15 +200,34 @@ export default function Login() {
               type="submit"
               className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white py-3.5 rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all shadow-md shadow-orange-500/10 text-base font-bold tracking-wide"
             >
-              {t("login_btn")}
+              {isRegister ? "Đăng ký" : t("login_btn")}
             </motion.button>
 
             <div className="text-center pt-2">
               <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {t("login_no_account") + " "}
-                <Link to="/" className="font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline">
-                  {t("login_contact_admin")}
-                </Link>
+                {isRegister ? (
+                  <>
+                    Đã có tài khoản?{" "}
+                    <button
+                      type="button"
+                      onClick={() => setIsRegister(false)}
+                      className="font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline"
+                    >
+                      Đăng nhập ngay
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Chưa có tài khoản?{" "}
+                    <button
+                      type="button"
+                      onClick={() => setIsRegister(true)}
+                      className="font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline"
+                    >
+                      Đăng ký ngay
+                    </button>
+                  </>
+                )}
               </p>
             </div>
           </form>

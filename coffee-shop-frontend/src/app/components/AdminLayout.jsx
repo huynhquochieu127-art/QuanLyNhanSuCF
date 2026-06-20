@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Coffee, Users, Package, Star, FileText, Calendar, Clock, ShoppingCart, Home, Sun, Moon, Menu, X } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
+import axios from "axios";
 
 const menuItems = [
   { path: "/", label: "Home", key: "home", icon: Home },
@@ -17,97 +18,177 @@ const menuItems = [
 
 export default function AdminLayout({ children }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { language, toggleLanguage, t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-slate-900 dark:bg-zinc-950 text-white">
-      {/* Header logo */}
-      <div className="p-6 border-b border-slate-800 dark:border-zinc-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center shadow-lg">
-            <Coffee className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold tracking-wide">Coffee Shop</h2>
-            <p className="text-xs text-amber-500 font-medium">{t("admin_portal")}</p>
+  // Lấy thông tin user từ localStorage
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const userName = user ? user.HoTen : t("admin_user");
+  const userEmail = user ? user.Email : "admin@shop.com";
+  
+  // Hàm lấy chữ viết tắt
+  const getInitials = (name) => {
+    if (!name) return "AD";
+    const parts = name.split(" ");
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+  const userInitials = user ? getInitials(user.HoTen) : "AD";
+
+  // Hàm đăng xuất
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        await axios.post('http://localhost:5000/api/auth/logout', {}, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Lỗi khi đăng xuất backend:", err);
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/login');
+    }
+  };
+
+  const SidebarContent = () => {
+    const userRole = user ? String(user.MaVaiTro) : null;
+
+    // Lọc các mục menu hiển thị dựa trên vai trò của người dùng
+    const allowedMenuItems = menuItems.filter(item => {
+      if (!userRole) return item.path === "/"; // Chưa đăng nhập chỉ xem Home
+
+      if (userRole === "3") {
+        // Nhân viên (Staff): ẩn nhân sự, quản lý kho, lịch làm việc, log hệ thống
+        const restricted = ["/employees", "/products", "/scheduling", "/logs"];
+        return !restricted.includes(item.path);
+      }
+
+      if (userRole === "2") {
+        // Quản lý (Manager): ẩn log hệ thống
+        return item.path !== "/logs";
+      }
+
+      return true; // Admin (1): xem tất cả
+    });
+
+    return (
+      <div className="flex flex-col h-full bg-slate-900 dark:bg-zinc-950 text-white">
+        {/* Header logo */}
+        <div className="p-6 border-b border-slate-800 dark:border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center shadow-lg">
+              <Coffee className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-wide">Coffee Shop</h2>
+              <p className="text-xs text-amber-500 font-medium">{t("admin_portal")}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Navigation links */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                isActive
-                  ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/20"
-                  : "text-slate-400 hover:bg-slate-800/60 dark:hover:bg-zinc-900 hover:text-white"
-              }`}
-            >
-              <Icon className={`w-5 h-5 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
-              <span className="font-medium text-sm">{t(`nav_${item.key}`)}</span>
-            </Link>
-          );
-        })}
-      </nav>
+        {/* Navigation links */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
+          {allowedMenuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+                  isActive
+                    ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/20"
+                    : "text-slate-400 hover:bg-slate-800/60 dark:hover:bg-zinc-900 hover:text-white"
+                }`}
+              >
+                <Icon className={`w-5 h-5 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
+                <span className="font-medium text-sm">{t(`nav_${item.key}`)}</span>
+              </Link>
+            );
+          })}
+        </nav>
 
-      {/* Footer controls & Profile */}
-      <div className="p-4 border-t border-slate-800 dark:border-zinc-800 space-y-2">
-        {/* Language Toggle */}
-        <button
-          onClick={toggleLanguage}
-          className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-base">🌐</span>
-            <span className="text-sm font-medium">{t("lang_switcher")}</span>
+        {/* Footer controls & Profile */}
+        <div className="p-4 border-t border-slate-800 dark:border-zinc-800 space-y-2">
+          {/* Language Toggle */}
+          <button
+            onClick={toggleLanguage}
+            className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-base">🌐</span>
+              <span className="text-sm font-medium">{t("lang_switcher")}</span>
+            </div>
+            <span className="text-xs bg-slate-700 dark:bg-zinc-800 px-2.5 py-1 rounded-full text-slate-400 font-bold">
+              {language === "en" ? "EN" : "VI"}
+            </span>
+          </button>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
+          >
+            <div className="flex items-center gap-3">
+              {theme === "dark" ? (
+                <>
+                  <Sun className="w-5 h-5 text-amber-500 animate-pulse" />
+                  <span className="text-sm font-medium">{t("theme_light")}</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-5 h-5 text-indigo-400" />
+                  <span className="text-sm font-medium">{t("theme_dark")}</span>
+                </>
+              )}
+            </div>
+          </button>
+
+          {/* Profile */}
+          <div className="flex items-center gap-3 px-3 pt-2">
+            <div className="w-10 h-10 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-sm font-bold shadow-md shadow-orange-900/10">
+              {userInitials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate text-slate-200">{userName}</p>
+              <p className="text-xs text-slate-400 truncate">{userEmail}</p>
+            </div>
           </div>
-          <span className="text-xs bg-slate-700 dark:bg-zinc-800 px-2.5 py-1 rounded-full text-slate-400 font-bold">
-            {language === "en" ? "EN" : "VI"}
-          </span>
-        </button>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
-        >
-          <div className="flex items-center gap-3">
-            {theme === "dark" ? (
-              <>
-                <Sun className="w-5 h-5 text-amber-500 animate-pulse" />
-                <span className="text-sm font-medium">{t("theme_light")}</span>
-              </>
+          {/* Nút Đăng nhập / Đăng xuất */}
+          <div className="pt-2">
+            {user ? (
+              <button
+                onClick={handleLogout}
+                className="flex items-center justify-between w-full px-4 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/40 transition-colors text-red-400 hover:text-red-300 font-bold"
+              >
+                <span className="text-sm">{t("logout") || "Đăng xuất"}</span>
+                <span className="text-xs">🚪</span>
+              </button>
             ) : (
-              <>
-                <Moon className="w-5 h-5 text-indigo-400" />
-                <span className="text-sm font-medium">{t("theme_dark")}</span>
-              </>
+              <Link
+                to="/login"
+                className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-amber-600/85 hover:bg-amber-600 transition-colors text-white font-bold text-center"
+              >
+                <span className="text-sm mx-auto">{t("login_btn") || "Đăng nhập"}</span>
+              </Link>
             )}
           </div>
-        </button>
-
-        {/* Profile */}
-        <div className="flex items-center gap-3 px-3 pt-2">
-          <div className="w-10 h-10 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-sm font-bold shadow-md shadow-orange-900/10">
-            AD
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate text-slate-200">{t("admin_user")}</p>
-            <p className="text-xs text-slate-400 truncate">admin@shop.com</p>
-          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 transition-colors duration-300 overflow-hidden">

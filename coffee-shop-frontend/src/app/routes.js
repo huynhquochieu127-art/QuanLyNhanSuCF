@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import POSDashboard from "./components/POSDashboard";
 import Timekeeping from "./components/Timekeeping";
 import ShiftScheduling from "./components/ShiftScheduling";
@@ -8,20 +8,53 @@ import EmployeeDirectory from "./components/EmployeeDirectory";
 import ProductManagement from "./components/ProductManagement";
 import CustomerLoyalty from "./components/CustomerLoyalty";
 import SystemLogs from "./components/SystemLogs";
+import React from "react";
+
+// Component bảo vệ Route dựa trên Token và Vai Trò (MaVaiTro)
+function ProtectedRoute({ children, allowedRoles }) {
+  const token = localStorage.getItem("token");
+  const userStr = localStorage.getItem("user");
+
+  if (!token || !userStr) {
+    // Chưa đăng nhập, chuyển hướng về Login
+    return React.createElement(Navigate, { to: "/login", replace: true });
+  }
+
+  const user = JSON.parse(userStr);
+  const userRole = String(user.MaVaiTro);
+
+  // Nếu vai trò hiện tại không nằm trong danh sách vai trò được phép
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.map(String).includes(userRole)) {
+    // Không có quyền, chuyển hướng về trang chủ
+    return React.createElement(Navigate, { to: "/", replace: true });
+  }
+
+  return children;
+}
+
+// Hàm bọc Route giúp code cấu hình gọn gàng hơn
+const protect = (Component, allowedRoles = []) => {
+  return () => React.createElement(ProtectedRoute, { allowedRoles }, React.createElement(Component));
+};
 
 export const router = createBrowserRouter([
   {
     path: "/",
     children: [
-      { index: true, Component: Home },
+      { index: true, Component: protect(Home, [1, 2, 3]) },
       { path: "login", Component: Login },
-      { path: "pos", Component: POSDashboard },
-      { path: "timekeeping", Component: Timekeeping },
-      { path: "scheduling", Component: ShiftScheduling },
-      { path: "employees", Component: EmployeeDirectory },
-      { path: "products", Component: ProductManagement },
-      { path: "customers", Component: CustomerLoyalty },
-      { path: "logs", Component: SystemLogs },
+      // Các route dùng chung cho mọi vai trò sau khi đăng nhập
+      { path: "pos", Component: protect(POSDashboard, [1, 2, 3]) },
+      { path: "timekeeping", Component: protect(Timekeeping, [1, 2, 3]) },
+      { path: "customers", Component: protect(CustomerLoyalty, [1, 2, 3]) },
+      
+      // Các route chỉ Admin (1) và Manager (2) được vào
+      { path: "scheduling", Component: protect(ShiftScheduling, [1, 2]) },
+      { path: "employees", Component: protect(EmployeeDirectory, [1, 2]) },
+      { path: "products", Component: protect(ProductManagement, [1, 2]) },
+      
+      // Route chỉ Admin (1) mới được vào
+      { path: "logs", Component: protect(SystemLogs, [1]) },
     ],
   },
 ]);

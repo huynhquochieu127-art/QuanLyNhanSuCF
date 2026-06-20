@@ -26,6 +26,34 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-module.exports = {
-  verifyToken
+// Middleware phân quyền dựa trên MaVaiTro
+const authorize = (allowedRoles = []) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Không tìm thấy thông tin xác thực!'
+      });
+    }
+
+    const { MaVaiTro } = req.user;
+
+    // Hỗ trợ truyền vào một số đơn lẻ hoặc một mảng các mã vai trò, chuyển tất cả về String để so sánh tránh lệch kiểu dữ liệu (INT vs String)
+    const rolesList = (Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles]).map(r => String(r));
+
+    if (rolesList.length > 0 && !rolesList.includes(String(MaVaiTro))) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền truy cập chức năng này!'
+      });
+    }
+
+    next();
+  };
 };
+
+module.exports = {
+  verifyToken,
+  authorize
+};
+

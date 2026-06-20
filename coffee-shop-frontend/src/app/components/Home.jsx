@@ -1,8 +1,9 @@
 import { Link } from "react-router";
-import { Coffee, Clock, Calendar, Users, Package, Star, FileText, LogIn, TrendingUp, BarChart3 } from "lucide-react";
+import { Coffee, Clock, Calendar, Users, Package, Star, FileText, LogIn, LogOut, TrendingUp, BarChart3 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import { motion } from "motion/react";
 import { useLanguage } from "../context/LanguageContext";
+import axios from "axios";
 
 const salesData = [
   { time: "08:00 AM", sales: 120, orders: 15 },
@@ -23,6 +24,31 @@ export default function Home() {
     { name: t("cat_food"), value: 650, color: "#f97316" },
   ];
 
+  // Lọc các module hiển thị dựa theo vai trò tài khoản
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const userRole = user ? String(user.MaVaiTro) : null;
+
+  // Hàm đăng xuất
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        await axios.post('http://localhost:5000/api/auth/logout', {}, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Lỗi khi đăng xuất backend:", err);
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+  };
+
   const modules = [
     { to: "/pos", icon: Coffee, title: t("nav_pos"), description: t("desc_pos"), color: "bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400" },
     { to: "/employees", icon: Users, title: t("nav_employees"), description: t("desc_employees"), color: "bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400" },
@@ -31,8 +57,45 @@ export default function Home() {
     { to: "/scheduling", icon: Calendar, title: t("nav_scheduling"), description: t("desc_scheduling"), color: "bg-pink-100 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400" },
     { to: "/timekeeping", icon: Clock, title: t("nav_timekeeping"), description: t("desc_timekeeping"), color: "bg-indigo-100 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400" },
     { to: "/logs", icon: FileText, title: t("nav_logs"), description: t("desc_logs"), color: "bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400" },
-    { to: "/login", icon: LogIn, title: t("login_btn") + " Portal", description: t("desc_login"), color: "bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400" },
+    user ? {
+      onClick: handleLogout,
+      icon: LogOut,
+      title: t("logout") || "Đăng xuất",
+      description: "Đăng xuất khỏi hệ thống",
+      color: "bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400"
+    } : {
+      to: "/login",
+      icon: LogIn,
+      title: t("login_btn") + " Portal",
+      description: t("desc_login"),
+      color: "bg-orange-100 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400"
+    }
   ];
+
+  const isAllowed = (m) => {
+    if (m.onClick) return !!userRole;
+
+    // Nếu chưa đăng nhập, chỉ cho phép xem trang Login và Home
+    if (!userRole) {
+      return m.to === "/login" || m.to === "/";
+    }
+    
+    // Nếu là Staff (3), ẩn các module quản lý
+    if (userRole === "3") {
+      const restricted = ["/employees", "/products", "/scheduling", "/logs"];
+      return !restricted.includes(m.to);
+    }
+    
+    // Nếu là Manager (2), ẩn logs (chỉ Admin được xem logs) và ẩn Login Portal
+    if (userRole === "2") {
+      return m.to !== "/logs" && m.to !== "/login";
+    }
+    
+    // Admin (1) xem được tất cả trừ nút Login Portal
+    return m.to !== "/login";
+  };
+
+  const filteredModules = modules.filter(isAllowed);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 transition-colors duration-300 p-6 md:p-10">
@@ -139,31 +202,48 @@ export default function Home() {
           </h2>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {modules.map((module, i) => {
+            {filteredModules.map((module, i) => {
               const Icon = module.icon;
+              const cardContent = (
+                <>
+                  <div className={`w-12 h-12 rounded-xl ${module.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
+                    <Icon className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-500 transition-colors mb-1">
+                      {module.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                      {module.description}
+                    </p>
+                  </div>
+                </>
+              );
+
+              const cardClass = "bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-850 rounded-2xl shadow-md p-6 hover:shadow-xl transition-all group hover:-translate-y-1.5 flex flex-col justify-between h-44 cursor-pointer text-left w-full";
+
               return (
                 <motion.div
-                  key={module.to}
+                  key={module.to || 'logout'}
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05, duration: 0.4 }}
                 >
-                  <Link
-                    to={module.to}
-                    className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-850 rounded-2xl shadow-md p-6 hover:shadow-xl transition-all group hover:-translate-y-1.5 flex flex-col justify-between h-44 cursor-pointer"
-                  >
-                    <div className={`w-12 h-12 rounded-xl ${module.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-500 transition-colors mb-1">
-                        {module.title}
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
-                        {module.description}
-                      </p>
-                    </div>
-                  </Link>
+                  {module.onClick ? (
+                    <button
+                      onClick={module.onClick}
+                      className={cardClass}
+                    >
+                      {cardContent}
+                    </button>
+                  ) : (
+                    <Link
+                      to={module.to}
+                      className={cardClass}
+                    >
+                      {cardContent}
+                    </Link>
+                  )}
                 </motion.div>
               );
             })}

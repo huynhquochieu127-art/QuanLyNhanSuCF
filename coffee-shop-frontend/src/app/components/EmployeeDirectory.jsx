@@ -1,26 +1,76 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Plus, Edit, Trash2 } from "lucide-react";
 import AdminLayout from "./AdminLayout";
-
-const employees = [
-  { id: "EMP001", name: "Sarah Johnson", phone: "(555) 123-4567", role: "Admin" },
-  { id: "EMP002", name: "Mike Chen", phone: "(555) 234-5678", role: "Manager" },
-  { id: "EMP003", name: "Emma Davis", phone: "(555) 345-6789", role: "Staff" },
-  { id: "EMP004", name: "James Wilson", phone: "(555) 456-7890", role: "Staff" },
-  { id: "EMP005", name: "Lisa Anderson", phone: "(555) 567-8901", role: "Manager" },
-  { id: "EMP006", name: "Tom Martinez", phone: "(555) 678-9012", role: "Staff" },
-  { id: "EMP007", name: "Anna Taylor", phone: "(555) 789-0123", role: "Staff" },
-  { id: "EMP008", name: "David Brown", phone: "(555) 890-1234", role: "Staff" },
-];
+import axios from "axios";
+import { toast } from "sonner";
 
 export default function EmployeeDirectory() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [employeeList, setEmployeeList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredEmployees = employees.filter(
+  const mockEmployees = [
+    { id: "EMP001", name: "Sarah Johnson", phone: "(555) 123-4567", role: "Admin" },
+    { id: "EMP002", name: "Mike Chen", phone: "(555) 234-5678", role: "Manager" },
+    { id: "EMP003", name: "Emma Davis", phone: "(555) 345-6789", role: "Staff" },
+    { id: "EMP004", name: "James Wilson", phone: "(555) 456-7890", role: "Staff" },
+    { id: "EMP005", name: "Lisa Anderson", phone: "(555) 567-8901", role: "Manager" },
+    { id: "EMP006", name: "Tom Martinez", phone: "(555) 678-9012", role: "Staff" },
+    { id: "EMP007", name: "Anna Taylor", phone: "(555) 789-0123", role: "Staff" },
+    { id: "EMP008", name: "David Brown", phone: "(555) 890-1234", role: "Staff" },
+  ];
+
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.warn("Chưa đăng nhập, hiển thị dữ liệu mẫu.");
+          setEmployeeList(mockEmployees);
+          setLoading(false);
+          return;
+        }
+
+        const res = await axios.get('http://localhost:5000/api/auth/taikhoan', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (res.data.success && Array.isArray(res.data.data)) {
+          // Map dữ liệu từ database SQL Server sang giao diện
+          const mapped = res.data.data.map(user => ({
+            id: user.MaTaiKhoan,
+            name: user.HoTen,
+            phone: user.Email, // Vì DB SQL Server mẫu chưa có cột số điện thoại, ta lấy Email thay thế
+            role: String(user.MaVaiTro) === '1' ? 'Admin' : (String(user.MaVaiTro) === '2' ? 'Manager' : 'Staff')
+          }));
+          setEmployeeList(mapped);
+        } else {
+          setEmployeeList(mockEmployees);
+        }
+      } catch (err) {
+        console.error("Lỗi khi kết nối API danh sách nhân viên:", err);
+        // Nếu bị lỗi 403 Forbidden (chưa có quyền)
+        if (err.response?.status === 403) {
+          toast.error("Bạn không có quyền xem danh sách nhân viên (Chỉ Admin/Manager được phép). Hiển thị dữ liệu mẫu.");
+        } else {
+          toast.error("Không thể kết nối đến server backend. Hiển thị dữ liệu mẫu.");
+        }
+        setEmployeeList(mockEmployees);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEmployees();
+  }, []);
+
+  const filteredEmployees = employeeList.filter(
     (emp) =>
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.phone.includes(searchQuery)
+      (emp.phone && emp.phone.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const getRoleBadgeColor = (role) => {
@@ -101,7 +151,7 @@ export default function EmployeeDirectory() {
           )}
 
           <div className="mt-6 flex items-center justify-between text-sm text-gray-600">
-            <span>Showing {filteredEmployees.length} of {employees.length} employees</span>
+            <span>Showing {filteredEmployees.length} of {employeeList.length} employees</span>
           </div>
         </div>
       </div>

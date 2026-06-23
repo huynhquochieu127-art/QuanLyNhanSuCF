@@ -51,7 +51,13 @@ export default function ShiftScheduling() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
 
+  // Lấy role của user
+  const userStr = localStorage.getItem("user");
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const isStaff = currentUser && String(currentUser.MaVaiTro) === "3";
+
   const addStaffToShift = (day, shift) => {
+    if (isStaff) return; // Prevent staff from adding
     setSelectedCell({ day, shift });
     setShowAddModal(true);
   };
@@ -71,6 +77,7 @@ export default function ShiftScheduling() {
   };
 
   const removeStaff = (day, shift, staffId) => {
+    if (isStaff) return; // Prevent staff from removing
     setSchedule((prev) => ({
       ...prev,
       [day]: {
@@ -143,23 +150,29 @@ export default function ShiftScheduling() {
                                   key={assignment.id}
                                   className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs flex items-center justify-between group"
                                 >
-                                  <span>{assignment.name}</span>
-                                  <button
-                                    onClick={() => removeStaff(day, shift, assignment.id)}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:text-red-600"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
+                                  <span className={isStaff && currentUser?.HoTen === assignment.name ? "font-bold text-amber-600" : ""}>
+                                    {assignment.name}
+                                  </span>
+                                  {!isStaff && (
+                                    <button
+                                      onClick={() => removeStaff(day, shift, assignment.id)}
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:text-red-600"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
-                            <button
-                              onClick={() => addStaffToShift(day, shift)}
-                              className="w-full bg-purple-200 hover:bg-purple-300 text-purple-700 py-1 px-2 rounded text-xs flex items-center justify-center gap-1 transition-colors"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Add Staff
-                            </button>
+                            {!isStaff && (
+                              <button
+                                onClick={() => addStaffToShift(day, shift)}
+                                className="w-full bg-purple-200 hover:bg-purple-300 text-purple-700 py-1 px-2 rounded text-xs flex items-center justify-center gap-1 transition-colors"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Add Staff
+                              </button>
+                            )}
                           </div>
                         </td>
                       );

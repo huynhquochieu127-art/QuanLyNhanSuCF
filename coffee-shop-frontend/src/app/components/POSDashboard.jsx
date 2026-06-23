@@ -1,36 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Coffee, Croissant, Cookie, Sandwich, X, Minus, Plus, ShoppingCart, QrCode, CreditCard, Banknote, CheckCircle, Search } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { useLanguage } from "../context/LanguageContext";
+import axios from "axios";
 
-const tables = [
-  { id: 1, name: "T1", status: "available" },
-  { id: 2, name: "T2", status: "occupied" },
-  { id: 3, name: "T3", status: "available" },
-  { id: 4, name: "T4", status: "occupied" },
-  { id: 5, name: "T5", status: "available" },
-  { id: 6, name: "T6", status: "available" },
-  { id: 7, name: "T7", status: "occupied" },
-  { id: 8, name: "T8", status: "available" },
-];
+// Tables will be fetched from API
 
-const menuItems = [
-  { id: 1, name: "Espresso", price: 3.5, category: "Coffee", icon: Coffee },
-  { id: 2, name: "Cappuccino", price: 4.5, category: "Coffee", icon: Coffee },
-  { id: 3, name: "Latte", price: 4.8, category: "Coffee", icon: Coffee },
-  { id: 4, name: "Americano", price: 3.8, category: "Coffee", icon: Coffee },
-  { id: 5, name: "Mocha", price: 5.2, category: "Coffee", icon: Coffee },
-  { id: 6, name: "Croissant", price: 3.2, category: "Bakery", icon: Croissant },
-  { id: 7, name: "Muffin", price: 3.5, category: "Bakery", icon: Cookie },
-  { id: 8, name: "Bagel", price: 4.0, category: "Bakery", icon: Cookie },
-  { id: 9, name: "Club Sandwich", price: 7.5, category: "Food", icon: Sandwich },
-  { id: 10, name: "Panini", price: 6.8, category: "Food", icon: Sandwich },
-];
+// Initial menuItems removed, will fetch from API
 
 export default function POSDashboard() {
   const { t, language } = useLanguage();
+  const [tables, setTables] = useState([]);
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [menuItems, setMenuItems] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [cart, setCart] = useState([]);
   const [discount, setDiscount] = useState("");
@@ -48,6 +33,39 @@ export default function POSDashboard() {
     if (cat === "All") return language === "en" ? "All" : "Tất cả";
     return t(`cat_${cat.toLowerCase()}`);
   };
+
+  useEffect(() => {
+    const fetchProductsAndTables = async () => {
+      try {
+        const resProducts = await axios.get('http://localhost:5000/api/products');
+        if (resProducts.data.success) {
+          const mapped = resProducts.data.data
+            .filter(p => p.CoBan === 1)
+            .map(p => ({
+              id: p.MaSanPham,
+              name: p.TenSanPham,
+              price: parseFloat(p.Gia),
+              category: p.MaDanhMuc === 1 ? 'Coffee' : 'Bakery',
+              icon: p.MaDanhMuc === 1 ? Coffee : (p.MaDanhMuc === 2 ? Croissant : Sandwich)
+            }));
+          setMenuItems(mapped);
+        }
+
+        const resTables = await axios.get('http://localhost:5000/api/tables');
+        if (resTables.data.success) {
+          const mappedTables = resTables.data.data.map(t => ({
+            id: t.MaBan,
+            name: t.TenBan,
+            status: t.TrangThai === 'ON' ? 'occupied' : 'available'
+          }));
+          setTables(mappedTables);
+        }
+      } catch (err) {
+        toast.error("Lỗi tải dữ liệu");
+      }
+    };
+    fetchProductsAndTables();
+  }, []);
 
   // Filter menuItems by search and category
   const filteredMenu = menuItems.filter((item) => {
@@ -95,6 +113,10 @@ export default function POSDashboard() {
 
   const handleCheckoutSubmit = (e) => {
     e.preventDefault();
+    if (!selectedTable) {
+      toast.warning("Vui lòng chọn bàn trước khi thanh toán");
+      return;
+    }
     if (cart.length === 0) {
       toast.warning(t("pos_toast_empty"));
       return;
@@ -102,20 +124,53 @@ export default function POSDashboard() {
     setShowCheckout(true);
   };
 
-  const processPayment = () => {
+  const processPayment = async () => {
     setIsProcessingPayment(true);
-    setTimeout(() => {
+    
+    try {
+      let customerId = null;
+      if (customerPhone) {
+        const cusRes = await axios.post('http://localhost:5000/api/customers/find-or-create', { SoDienThoai: customerPhone });
+        if (cusRes.data.success) {
+          customerId = cusRes.data.data.MaKhachHang;
+        }
+      }
+
+      const orderData = {
+        MaBan: selectedTable,
+        MaKhachHang: customerId,
+        TongTien: subtotal,
+        GiamGia: discountAmount,
+        ThanhTien: total,
+        PhuongThucThanhToan: paymentMethod,
+        items: cart.map(c => ({
+          MaSanPham: c.menuItem.id,
+          SoLuong: c.quantity,
+          DonGia: c.menuItem.price
+        }))
+      };
+
+      const res = await axios.post('http://localhost:5000/api/pos/order', orderData);
+      
+      if (res.data.success) {
+        setIsProcessingPayment(false);
+        setPaymentSuccess(true);
+        toast.success("Thanh toán thành công!");
+        
+        setTimeout(() => {
+          setCart([]);
+          setDiscount("");
+          setSelectedTable(null);
+          setCustomerPhone("");
+          setShowCheckout(false);
+          setPaymentSuccess(false);
+          setCashPaid("");
+        }, 1500);
+      }
+    } catch (err) {
       setIsProcessingPayment(false);
-      setPaymentSuccess(true);
-      toast.success(t("pos_payment_completed"));
-      setTimeout(() => {
-        setCart([]);
-        setDiscount("");
-        setShowCheckout(false);
-        setPaymentSuccess(false);
-        setCashPaid("");
-      }, 1500);
-    }, 2000);
+      toast.error("Lỗi khi thanh toán đơn hàng!");
+    }
   };
 
   return (
@@ -191,10 +246,13 @@ export default function POSDashboard() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   key={table.id}
+                  onClick={() => setSelectedTable(table.id)}
                   className={`p-3.5 rounded-xl border transition-all relative ${
-                    table.status === "available"
-                      ? "bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-400"
-                      : "bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-400"
+                    selectedTable === table.id 
+                      ? "bg-amber-100 border-amber-500 shadow-[0_0_0_2px_rgba(245,158,11,0.5)] ring-2 ring-amber-500 ring-offset-1" 
+                      : table.status === "available"
+                        ? "bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-400"
+                        : "bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-400"
                   }`}
                 >
                   <div className="text-left">
@@ -350,17 +408,30 @@ export default function POSDashboard() {
 
           {/* Pricing & Billing panel */}
           <form onSubmit={handleCheckoutSubmit} className="space-y-4 border-t border-slate-100 dark:border-zinc-800/80 pt-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1.5">{t("pos_discount_code")}</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                placeholder="0"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-600"
-              />
+            
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1.5">SĐT Khách (nếu có)</label>
+                <input
+                  type="text"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="Nhập SĐT..."
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-600"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1.5">{t("pos_discount_code")}</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-600"
+                />
+              </div>
             </div>
             
             <div className="space-y-2 text-sm bg-slate-50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 p-3.5 rounded-2xl">

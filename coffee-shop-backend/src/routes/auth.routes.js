@@ -5,12 +5,12 @@ const { verifyToken, authorize } = require('../middlewares/auth.middleware');
 
 // Public routes
 router.post('/login', authController.login);
-router.post('/register', authController.register);
 
 // Protected routes (Cần token và phân quyền)
 router.post('/logout', verifyToken, authController.logout);
 // Route lấy danh sách tài khoản (chỉ Admin và Quản lý mới được xem)
 router.get('/taikhoan', verifyToken, authorize([1, 2]), authController.getTaiKhoan);
+router.put('/account/:id/toggle-lock', authController.toggleLockAccount);
 
 // API test để lấy thông tin user đang đăng nhập từ token
 router.get('/me', verifyToken, (req, res) => {

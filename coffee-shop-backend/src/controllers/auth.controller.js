@@ -41,7 +41,7 @@ const login = async (req, res) => {
     // Kiểm tra mật khẩu
     // Bước này mình làm linh hoạt: Kiểm tra xem DB đang lưu mã hóa (bcrypt) hay lưu chữ thường (plain text)
     let isPasswordValid = false;
-    
+
     // Nếu mật khẩu bắt đầu bằng '$2' thì đó là chuỗi mã hóa bcrypt
     if (user.MatKhau && user.MatKhau.startsWith('$2')) {
       isPasswordValid = await bcrypt.compare(MatKhau, user.MatKhau);
@@ -88,18 +88,18 @@ const register = async (req, res) => {
     const { HoTen, Email, MatKhau } = req.body;
 
     if (!HoTen || !Email || !MatKhau) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Vui lòng nhập đầy đủ Họ tên, Email và Mật khẩu' 
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập đầy đủ Họ tên, Email và Mật khẩu'
       });
     }
 
     // 1. Kiểm tra Email đã tồn tại chưa
     const [existingUsers] = await db.query('SELECT * FROM taikhoan WHERE Email = ?', [Email]);
     if (existingUsers && existingUsers.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email này đã được đăng ký sử dụng' 
+      return res.status(400).json({
+        success: false,
+        message: 'Email này đã được đăng ký sử dụng'
       });
     }
 
@@ -115,12 +115,12 @@ const register = async (req, res) => {
     let hasIdentity = false;
     let isCharPk = false;
     let columns = [];
-    
+
     try {
       const [columnsResult] = await db.query(`
         SELECT COLUMN_NAME, DATA_TYPE 
         FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'taikhoan'
+        WHERE TABLE_NAME = 'taikhoan' AND TABLE_SCHEMA = DATABASE()
       `);
       columns = columnsResult || [];
     } catch (e) {
@@ -129,11 +129,13 @@ const register = async (req, res) => {
 
     try {
       const [identityCheck] = await db.query(`
-        SELECT OBJECTPROPERTY(OBJECT_ID('taikhoan'), 'TableHasIdentity') AS HasIdentity
+        SELECT EXTRA 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'taikhoan' AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'MaTaiKhoan'
       `);
-      hasIdentity = identityCheck && identityCheck[0] && identityCheck[0].HasIdentity === 1;
+      hasIdentity = identityCheck && identityCheck[0] && identityCheck[0].EXTRA && identityCheck[0].EXTRA.includes('auto_increment');
     } catch (e) {
-      console.warn("Không thể truy vấn TableHasIdentity:", e.message);
+      console.warn("Không thể truy vấn auto_increment:", e.message);
     }
 
     const pkColumn = columns && Array.isArray(columns) ? columns.find(c => c.COLUMN_NAME && c.COLUMN_NAME.toLowerCase() === 'mataikhoan') : null;
@@ -174,7 +176,7 @@ const register = async (req, res) => {
         } catch (e) {
           console.warn("Không thể lấy MAX(MaTaiKhoan), thử bắt đầu từ 1:", e.message);
         }
-        
+
         // Nếu maxId có dạng chuỗi (ví dụ 'TK001') mặc dù isCharPk chưa được phát hiện, ta vẫn cố gắng xử lý để tránh lỗi
         if (typeof maxId === 'string') {
           const numPart = parseInt(maxId.replace(/^\D+/g, ''), 10) || 0;
@@ -206,9 +208,9 @@ const register = async (req, res) => {
 
   } catch (error) {
     console.error('Lỗi khi đăng ký tài khoản:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: `Lỗi server khi đăng ký tài khoản: ${error.message}` 
+    res.status(500).json({
+      success: false,
+      message: `Lỗi server khi đăng ký tài khoản: ${error.message}`
     });
   }
 };
@@ -222,9 +224,34 @@ const logout = (req, res) => {
   });
 };
 
+// API: Khóa / Mở khóa tài khoản
+const toggleLockAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [user] = await db.query('SELECT TrangThaiHoatDong FROM taikhoan WHERE MaTaiKhoan = ?', [id]);
+    
+    if (user.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    }
+
+    const newStatus = user[0].TrangThaiHoatDong === 1 ? 0 : 1;
+    await db.query('UPDATE taikhoan SET TrangThaiHoatDong = ? WHERE MaTaiKhoan = ?', [newStatus, id]);
+
+    res.json({ 
+      success: true, 
+      message: newStatus === 1 ? 'Đã mở khóa tài khoản' : 'Đã khóa tài khoản',
+      newStatus
+    });
+  } catch (error) {
+    console.error('Lỗi khi khóa/mở khóa tài khoản:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
 module.exports = {
   getTaiKhoan,
   login,
   register,
-  logout
+  logout,
+  toggleLockAccount
 };

@@ -9,10 +9,10 @@ async function deleteSpecificAccounts() {
     await db.query('DELETE FROM chamcong WHERE MaNhanVien IN (?)', [ids]);
     await db.query('DELETE FROM yeucau_chamcong WHERE MaNhanVien IN (?)', [ids]);
 
-    // Xóa từ bảng nhanvien
+    // Xóa từ bảng nhanvien1
     await db.query('DELETE FROM nhanvien WHERE MaNhanVien IN (?)', [ids]);
 
-    // Xóa từ bảng taikhoan
+    // Xóa từ bảng taikhoan1
     await db.query('DELETE FROM taikhoan WHERE MaTaiKhoan IN (?)', [ids]);
 
     console.log('Xóa thành công 2 tài khoản test!');

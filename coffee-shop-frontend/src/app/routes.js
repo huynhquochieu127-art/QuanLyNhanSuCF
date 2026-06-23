@@ -49,10 +49,12 @@ export const router = createBrowserRouter([
       { path: "customers", Component: protect(CustomerLoyalty, [1, 2, 3]) },
       
       // Các route chỉ Admin (1) và Manager (2) được vào
-      { path: "scheduling", Component: protect(ShiftScheduling, [1, 2]) },
       { path: "employees", Component: protect(EmployeeDirectory, [1, 2]) },
       { path: "products", Component: protect(ProductManagement, [1, 2]) },
       
+      // Route Lịch làm việc cho mọi role (Role 3 xem được, Role 1,2 sửa được)
+      { path: "scheduling", Component: protect(ShiftScheduling, [1, 2, 3]) },
+
       // Route chỉ Admin (1) mới được vào
       { path: "logs", Component: protect(SystemLogs, [1]) },
     ],

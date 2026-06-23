@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Coffee, Clock, Calendar, Users, Package, Star, FileText, LogIn, LogOut, TrendingUp, BarChart3, Bell, DollarSign, FileEdit, Printer, Download, X, CheckCircle2, AlertCircle, Send } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import { motion } from "motion/react";
@@ -40,35 +40,99 @@ export default function Home() {
   const todayStr = today.toISOString().split('T')[0];
 
   // State quản lý chấm công ngày hôm nay
-  const [isCheckedIn, setIsCheckedIn] = useState(() => localStorage.getItem(`isCheckedIn_${user?.MaTaiKhoan}_${todayStr}`) === "true");
-  const [checkInTime, setCheckInTime] = useState(() => localStorage.getItem(`checkInTime_${user?.MaTaiKhoan}_${todayStr}`) || "-");
-  const [totalHours, setTotalHours] = useState(() => localStorage.getItem(`totalHours_${user?.MaTaiKhoan}_${todayStr}`) || "0");
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [checkInTime, setCheckInTime] = useState("-");
+  const [totalHours, setTotalHours] = useState("0");
 
   // State quản lý Modal Phiếu lương & Bổ sung điểm danh
   const [showPayslipModal, setShowPayslipModal] = useState(false);
   const [showMissingAttendanceModal, setShowMissingAttendanceModal] = useState(false);
 
   // States của Phiếu lương
-  const [payslipMonth, setPayslipMonth] = useState("2026-06");
+  const [payslipMonth, setPayslipMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [payslipData, setPayslipData] = useState(null);
 
-  // States của Bổ sung điểm danh
+  // States của Bổ sung điểm danh / Yêu cầu
+  const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica
   const [missingDate, setMissingDate] = useState(todayStr);
   const [missingShift, setMissingShift] = useState("Ca Hành Chính (08:00 - 17:00)");
   const [missingType, setMissingType] = useState("both"); // both, checkin, checkout
   const [missingTimeIn, setMissingTimeIn] = useState("08:00");
   const [missingTimeOut, setMissingTimeOut] = useState("17:00");
   const [missingReason, setMissingReason] = useState("");
+  // Dành riêng cho Đổi ca
+  const [targetSwapShift, setTargetSwapShift] = useState(""); 
   const [submitting, setSubmitting] = useState(false);
 
-  // Danh sách đơn bổ sung điểm danh lưu ở localStorage
-  const [attendanceRequests, setAttendanceRequests] = useState(() => {
-    const saved = localStorage.getItem(`attendance_requests_${user?.MaTaiKhoan}`);
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: "RQ-9921", date: "2026-06-19", shift: "Ca Hành Chính (08:00 - 17:00)", type: "Cả Check-in & Check-out", time: "08:00 - 17:00", reason: "Gặp sự cố kết nối máy chấm công vân tay cửa hàng", status: "approved" },
-      { id: "RQ-9920", date: "2026-06-15", shift: "Ca Tối (18:00 - 22:00)", type: "Check-in", time: "18:05", reason: "Đi công tác hỗ trợ đột xuất chi nhánh Phê La", status: "pending" }
-    ];
-  });
+  // States của Xem Thông tin cá nhân
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+
+  // Danh sách đơn bổ sung điểm danh
+  const [attendanceRequests, setAttendanceRequests] = useState([]);
+
+  // Fetch dữ liệu chấm công hôm nay và danh sách yêu cầu
+  useEffect(() => {
+    if (user?.MaTaiKhoan) {
+      const fetchTimekeeping = async () => {
+        try {
+          const res = await axios.get(`http://localhost:5000/api/timekeeping/today-status?employeeId=${user.MaTaiKhoan}`);
+          if (res.data.success) {
+            setIsCheckedIn(res.data.data.isCheckedIn);
+            setCheckInTime(res.data.data.checkInTime || "-");
+            setTotalHours(res.data.data.totalHours || "0");
+          }
+
+          const reqRes = await axios.get(`http://localhost:5000/api/timekeeping/requests?employeeId=${user.MaTaiKhoan}`);
+          if (reqRes.data.success) {
+            setAttendanceRequests(reqRes.data.data.map(r => ({
+              id: `RQ-${r.MaYeuCau}`,
+              date: new Date(r.Ngay).toISOString().split('T')[0],
+              shift: r.CaLam,
+              type: r.Loai,
+              time: r.ThoiGian,
+              reason: r.LyDo,
+              status: r.TrangThai
+            })));
+          }
+
+          // Fetch profile details from employee table
+          try {
+            const empRes = await axios.get(`http://localhost:5000/api/employees/${user.MaTaiKhoan}`);
+            if (empRes.data.success) {
+              setProfileData(empRes.data.data);
+            }
+          } catch (err) {
+            console.warn("Không lấy được profile từ bảng nhanvien:", err);
+          }
+        } catch (error) {
+          console.error("Lỗi lấy dữ liệu", error);
+        }
+      };
+      fetchTimekeeping();
+    }
+  }, [user?.MaTaiKhoan]);
+
+  // Fetch phiếu lương
+  useEffect(() => {
+    if (user?.MaTaiKhoan && showPayslipModal) {
+      const fetchPayslip = async () => {
+        try {
+          const res = await axios.get(`http://localhost:5000/api/payroll/me/${user.MaTaiKhoan}?month=${payslipMonth}`);
+          if (res.data.success) {
+            setPayslipData(res.data.data);
+          }
+        } catch (error) {
+          console.error("Lỗi lấy phiếu lương", error);
+          toast.error("Không thể tải phiếu lương");
+        }
+      };
+      fetchPayslip();
+    }
+  }, [user?.MaTaiKhoan, showPayslipModal, payslipMonth]);
 
   const handleCheckIn = () => {
     const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -109,88 +173,68 @@ export default function Home() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
   };
 
-  const getPayslipData = (role, month) => {
-    const monthYear = month.split("-");
-    const m = parseInt(monthYear[1]) || 6;
-    const y = parseInt(monthYear[0]) || 2026;
-    
-    const seed = m * 7;
-    const daysWorked = 24 - (seed % 3);
-    const overtimeHours = (seed % 5) * 4 + 2;
-    
-    let baseSalary = 6000000;
-    let roleName = "Nhân viên";
-    
-    if (role === "1") {
-      baseSalary = 15000000;
-      roleName = "Quản trị viên";
-    } else if (role === "2") {
-      baseSalary = 10000000;
-      roleName = "Quản lý cửa hàng";
-    } else if (role === "3") {
-      baseSalary = 6000000;
-      roleName = "Nhân viên pha chế";
-    }
+  // getPayslipData function removed as it is now fetched via API
 
-    const dailyRate = baseSalary / 26;
-    const actualWorkPay = Math.round(dailyRate * daysWorked);
-    const otRate = (baseSalary / 26 / 8) * 1.5;
-    const otPay = Math.round(otRate * overtimeHours);
-    
-    const lunchAllowance = daysWorked * 35000;
-    const bonusChuyenCan = daysWorked >= 24 ? 500000 : 200000;
-    const bhxh = Math.round(baseSalary * 0.08); // 8% BHXH
-    
-    const totalIncome = actualWorkPay + otPay + lunchAllowance + bonusChuyenCan;
-    const totalDeductions = bhxh + (totalIncome > 11000000 ? Math.round((totalIncome - 11000000) * 0.05) : 0);
-    const netSalary = totalIncome - totalDeductions;
-
-    return {
-      roleName,
-      daysWorked,
-      overtimeHours,
-      actualWorkPay,
-      otPay,
-      lunchAllowance,
-      bonusChuyenCan,
-      bhxh,
-      totalIncome,
-      totalDeductions,
-      netSalary
-    };
-  };
-
-  const handleAddAttendanceRequest = (e) => {
+  const handleAddAttendanceRequest = async (e) => {
     e.preventDefault();
     if (!missingReason.trim()) {
-      toast.error("Vui lòng nhập lý do bổ sung điểm danh");
+      toast.error("Vui lòng nhập lý do");
       return;
     }
     
     setSubmitting(true);
     
-    setTimeout(() => {
-      const typeText = missingType === 'both' ? 'Cả Check-in & Check-out' : (missingType === 'checkin' ? 'Check-in' : 'Check-out');
-      const timeText = missingType === 'both' ? `${missingTimeIn} - ${missingTimeOut}` : (missingType === 'checkin' ? missingTimeIn : missingTimeOut);
+    try {
+      let typeText = "";
+      let timeText = "";
       
-      const newRequest = {
-        id: `RQ-${Math.floor(1000 + Math.random() * 9000)}`,
-        date: missingDate,
-        shift: missingShift,
-        type: typeText,
-        time: timeText,
-        reason: missingReason,
-        status: "pending"
+      if (requestCategory === 'bosung') {
+        typeText = `Bổ sung: ${missingType === 'both' ? 'Cả In/Out' : (missingType === 'checkin' ? 'Check-in' : 'Check-out')}`;
+        timeText = missingType === 'both' ? `${missingTimeIn} - ${missingTimeOut}` : (missingType === 'checkin' ? missingTimeIn : missingTimeOut);
+      } else if (requestCategory === 'xinnghi') {
+        typeText = "Xin nghỉ phép";
+        timeText = "Cả ca";
+      } else if (requestCategory === 'doica') {
+        typeText = "Xin đổi ca";
+        if (!targetSwapShift.trim()) {
+          toast.error("Vui lòng nhập ca muốn đổi sang");
+          setSubmitting(false);
+          return;
+        }
+        timeText = `Đổi sang: ${targetSwapShift}`;
+      }
+      
+      const payload = {
+        MaNhanVien: user.MaTaiKhoan,
+        Ngay: missingDate,
+        CaLam: missingShift,
+        Loai: typeText,
+        ThoiGian: timeText,
+        LyDo: missingReason
       };
+
+      const res = await axios.post('http://localhost:5000/api/timekeeping/request', payload);
       
-      const updated = [newRequest, ...attendanceRequests];
-      setAttendanceRequests(updated);
-      localStorage.setItem(`attendance_requests_${user?.MaTaiKhoan}`, JSON.stringify(updated));
-      
-      setMissingReason("");
+      if (res.data.success) {
+        const newRequest = {
+          id: `RQ-${res.data.data.id}`,
+          date: missingDate,
+          shift: missingShift,
+          type: typeText,
+          time: timeText,
+          reason: missingReason,
+          status: "pending"
+        };
+        
+        setAttendanceRequests([newRequest, ...attendanceRequests]);
+        setMissingReason("");
+        toast.success("Gửi yêu cầu bổ sung điểm danh thành công! Đang chờ phê duyệt.");
+      }
+    } catch (error) {
+      toast.error("Lỗi khi gửi yêu cầu");
+    } finally {
       setSubmitting(false);
-      toast.success("Gửi yêu cầu bổ sung điểm danh thành công! Đang chờ phê duyệt.");
-    }, 800);
+    }
   };
 
   const handleDeleteRequest = (id) => {
@@ -218,8 +262,8 @@ export default function Home() {
     {
       onClick: () => setShowMissingAttendanceModal(true),
       icon: FileEdit,
-      title: t("nav_missing_attendance") || "Bổ sung điểm danh",
-      description: t("desc_missing_attendance") || "Yêu cầu bổ sung giờ vào/ra bị thiếu",
+      title: t("nav_missing_attendance") || "Gửi Yêu Cầu",
+      description: t("desc_missing_attendance") || "Xin nghỉ, đổi ca, bổ sung công",
       color: "bg-sky-100 dark:bg-sky-950/30 text-sky-600 dark:text-sky-400",
       forStaffOnly: true
     },
@@ -253,7 +297,7 @@ export default function Home() {
     
     // Nếu là Staff (3), ẩn các module quản lý
     if (userRole === "3") {
-      const restricted = ["/employees", "/products", "/scheduling", "/logs"];
+      const restricted = ["/employees", "/products", "/logs"];
       return !restricted.includes(m.to);
     }
     
@@ -280,16 +324,16 @@ export default function Home() {
               <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg text-white font-black text-xl flex-shrink-0">
                 {user?.HoTen ? user.HoTen.split(" ").pop().slice(0, 2).toUpperCase() : "NV"}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setShowProfileModal(true)}>
                 <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-wider mb-0.5">
                   <span>{t("system_active")}</span>
                   <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
                 </div>
-                <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white truncate">
+                <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white truncate group hover:text-amber-600 transition-colors">
                   {user?.HoTen || "Nguyễn Phạm Trang Dung"}
                 </h1>
-                <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium truncate mt-0.5">
-                  Katinat, D1, Phê La
+                <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium truncate mt-0.5 hover:underline">
+                  Xem thông tin hồ sơ
                 </p>
               </div>
               
@@ -529,7 +573,7 @@ export default function Home() {
                       {user?.HoTen || "Nguyễn Phạm Trang Dung"}
                     </h4>
                     <p className="text-xs text-slate-500 dark:text-zinc-400 font-semibold mt-1">
-                      Chức danh: <span className="text-slate-700 dark:text-zinc-300 font-bold">{getPayslipData(userRole, payslipMonth).roleName}</span>
+                      Chức danh: <span className="text-slate-700 dark:text-zinc-300 font-bold">{payslipData?.roleName || "Nhân viên"}</span>
                     </p>
                   </div>
                 </div>
@@ -549,78 +593,77 @@ export default function Home() {
               </div>
 
               {/* Salary Calculations & Specs */}
-              {(() => {
-                const data = getPayslipData(userRole, payslipMonth);
-                return (
-                  <div className="space-y-4">
-                    {/* Key Metrics Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
-                        <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Ngày công</span>
-                        <span className="text-lg font-black text-slate-800 dark:text-white">{data.daysWorked} công</span>
-                      </div>
-                      <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
-                        <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tăng ca</span>
-                        <span className="text-lg font-black text-slate-800 dark:text-white">{data.overtimeHours} giờ</span>
-                      </div>
-                      <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
-                        <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tổng thu nhập</span>
-                        <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400 block mt-1">{formatVND(data.totalIncome)}</span>
-                      </div>
-                      <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
-                        <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tổng giảm trừ</span>
-                        <span className="text-sm font-extrabold text-red-500 block mt-1">{formatVND(data.totalDeductions)}</span>
-                      </div>
+              {payslipData ? (
+                <div className="space-y-4">
+                  {/* Key Metrics Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
+                      <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Ngày công</span>
+                      <span className="text-lg font-black text-slate-800 dark:text-white">{payslipData.daysWorked} công</span>
                     </div>
-
-                    {/* Detailed breakdown list */}
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="px-5 py-3.5 bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-100 dark:border-zinc-800">
-                        <span className="text-xs font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Khoản mục thu nhập & giảm trừ</span>
-                      </div>
-
-                      <div className="divide-y divide-slate-100 dark:divide-zinc-850 px-5 text-sm font-medium">
-                        {/* 1. Lương cơ bản tính theo công */}
-                        <div className="py-3 flex justify-between">
-                          <span className="text-slate-500 dark:text-zinc-400">Lương ngày công thực tế ({data.daysWorked} ngày)</span>
-                          <span className="text-slate-800 dark:text-white font-bold">{formatVND(data.actualWorkPay)}</span>
-                        </div>
-                        {/* 2. Lương tăng ca */}
-                        <div className="py-3 flex justify-between">
-                          <span className="text-slate-500 dark:text-zinc-400">Lương tăng ca ({data.overtimeHours} giờ x 150%)</span>
-                          <span className="text-slate-800 dark:text-white font-bold">{formatVND(data.otPay)}</span>
-                        </div>
-                        {/* 3. Phụ cấp ăn trưa */}
-                        <div className="py-3 flex justify-between">
-                          <span className="text-slate-500 dark:text-zinc-400">Phụ cấp tiền ăn (35.000đ/ngày)</span>
-                          <span className="text-slate-800 dark:text-white font-bold">{formatVND(data.lunchAllowance)}</span>
-                        </div>
-                        {/* 4. Thưởng chuyên cần */}
-                        <div className="py-3 flex justify-between">
-                          <span className="text-slate-500 dark:text-zinc-400">Thưởng chuyên cần / Hỗ trợ</span>
-                          <span className="text-slate-800 dark:text-white font-bold">{formatVND(data.bonusChuyenCan)}</span>
-                        </div>
-                        {/* 5. Khấu trừ BHXH */}
-                        <div className="py-3 flex justify-between">
-                          <span className="text-red-500 font-semibold">Khấu trừ Bảo hiểm xã hội (8% lương CB)</span>
-                          <span className="text-red-500 font-bold">-{formatVND(data.bhxh)}</span>
-                        </div>
-                      </div>
+                    <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
+                      <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tăng ca</span>
+                      <span className="text-lg font-black text-slate-800 dark:text-white">{payslipData.overtimeHours} giờ</span>
                     </div>
-
-                    {/* Net Income Callout */}
-                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-5 rounded-2xl flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider block">Thực Nhận (Net Salary)</span>
-                        <span className="text-xxs text-emerald-600 dark:text-emerald-500 font-medium">Số tiền chuyển khoản cuối cùng</span>
-                      </div>
-                      <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                        {formatVND(data.netSalary)}
-                      </span>
+                    <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
+                      <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tổng thu nhập</span>
+                      <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400 block mt-1">{formatVND(payslipData.totalIncome)}</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-100 dark:border-zinc-900 text-center">
+                      <span className="text-xxs font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block mb-1">Tổng giảm trừ</span>
+                      <span className="text-sm font-extrabold text-red-500 block mt-1">{formatVND(payslipData.totalDeductions)}</span>
                     </div>
                   </div>
-                );
-              })()}
+
+                  {/* Detailed breakdown list */}
+                  <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-3.5 bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-100 dark:border-zinc-800">
+                      <span className="text-xs font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Khoản mục thu nhập & giảm trừ</span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 dark:divide-zinc-850 px-5 text-sm font-medium">
+                      {/* 1. Lương cơ bản tính theo công */}
+                      <div className="py-3 flex justify-between">
+                        <span className="text-slate-500 dark:text-zinc-400">Lương ngày công thực tế ({payslipData.daysWorked} ngày)</span>
+                        <span className="text-slate-800 dark:text-white font-bold">{formatVND(payslipData.actualWorkPay)}</span>
+                      </div>
+                      {/* 2. Lương tăng ca */}
+                      <div className="py-3 flex justify-between">
+                        <span className="text-slate-500 dark:text-zinc-400">Lương tăng ca ({payslipData.overtimeHours} giờ x 150%)</span>
+                        <span className="text-slate-800 dark:text-white font-bold">{formatVND(payslipData.otPay)}</span>
+                      </div>
+                      {/* 3. Phụ cấp ăn trưa */}
+                      <div className="py-3 flex justify-between">
+                        <span className="text-slate-500 dark:text-zinc-400">Phụ cấp tiền ăn (35.000đ/ngày)</span>
+                        <span className="text-slate-800 dark:text-white font-bold">{formatVND(payslipData.lunchAllowance)}</span>
+                      </div>
+                      {/* 4. Thưởng chuyên cần */}
+                      <div className="py-3 flex justify-between">
+                        <span className="text-slate-500 dark:text-zinc-400">Thưởng chuyên cần / Hỗ trợ</span>
+                        <span className="text-slate-800 dark:text-white font-bold">{formatVND(payslipData.bonusChuyenCan)}</span>
+                      </div>
+                      {/* 5. Khấu trừ BHXH */}
+                      <div className="py-3 flex justify-between">
+                        <span className="text-red-500 font-semibold">Khấu trừ Bảo hiểm xã hội (8% lương CB)</span>
+                        <span className="text-red-500 font-bold">-{formatVND(payslipData.bhxh)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Net Income Callout */}
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-5 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider block">Thực Nhận (Net Salary)</span>
+                      <span className="text-xxs text-emerald-600 dark:text-emerald-500 font-medium">Số tiền chuyển khoản cuối cùng</span>
+                    </div>
+                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      {formatVND(payslipData.netSalary)}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-slate-500">Đang tải dữ liệu lương...</div>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -648,72 +691,49 @@ export default function Home() {
         </div>
       )}
 
-      {/* --- MODAL BỔ SUNG ĐIỂM DANH --- */}
+      {/* --- MODAL GỬI YÊU CẦU NHÂN SỰ --- */}
       {showMissingAttendanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm dark:bg-zinc-950/80 animate-fade-in overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col md:flex-row"
+            className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col md:flex-row"
           >
             {/* Left Panel: Form submission */}
             <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-slate-100 dark:border-zinc-800">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-sky-100 dark:bg-sky-950/40 rounded-xl flex items-center justify-center text-sky-600 dark:text-sky-400">
-                  <FileEdit className="w-5 h-5" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-sky-100 dark:bg-sky-950/40 rounded-xl flex items-center justify-center text-sky-600 dark:text-sky-400">
+                    <FileEdit className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Gửi Yêu Cầu Nhân Sự</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">Nghỉ phép, đổi ca, bổ sung công</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white">Bổ Sung Điểm Danh</h3>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">Gửi yêu cầu bổ sung giờ chấm công</p>
-                </div>
+                <button onClick={() => setShowMissingAttendanceModal(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+                  <X className="w-6 h-6" />
+                </button>
               </div>
 
               <form onSubmit={handleAddAttendanceRequest} className="space-y-4">
-                {/* Date Picker */}
+                {/* Loại Yêu cầu */}
                 <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ngày cần bổ sung</label>
-                  <input 
-                    type="date" 
-                    value={missingDate}
-                    max={todayStr}
-                    onChange={(e) => setMissingDate(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                {/* Shift Selector */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ca làm việc</label>
-                  <select 
-                    value={missingShift}
-                    onChange={(e) => setMissingShift(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                  >
-                    <option value="Ca Hành Chính (08:00 - 17:00)">Ca Hành Chính (08:00 - 17:00)</option>
-                    <option value="Ca Sáng (08:00 - 12:00)">Ca Sáng (08:00 - 12:00)</option>
-                    <option value="Ca Chiều (13:00 - 17:00)">Ca Chiều (13:00 - 17:00)</option>
-                    <option value="Ca Tối (18:00 - 22:00)">Ca Tối (18:00 - 22:00)</option>
-                  </select>
-                </div>
-
-                {/* Adjustment Type Selection */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Loại bổ sung</label>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Loại Yêu Cầu</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { id: "both", label: "Cả In & Out" },
-                      { id: "checkin", label: "Giờ Check-in" },
-                      { id: "checkout", label: "Giờ Check-out" }
+                      { id: "bosung", label: "Bổ sung công" },
+                      { id: "xinnghi", label: "Xin nghỉ phép" },
+                      { id: "doica", label: "Xin đổi ca" }
                     ].map((type) => (
                       <button
                         type="button"
                         key={type.id}
-                        onClick={() => setMissingType(type.id)}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                          missingType === type.id 
-                            ? "bg-amber-500 border-amber-500 text-white" 
+                        onClick={() => setRequestCategory(type.id)}
+                        className={`py-2 px-2 rounded-xl border text-xs font-bold transition-all ${
+                          requestCategory === type.id 
+                            ? "bg-sky-500 border-sky-500 text-white shadow-md" 
                             : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-850 text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
                         }`}
                       >
@@ -723,54 +743,126 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Time Pickers */}
-                <div className="grid grid-cols-2 gap-4">
-                  {(missingType === "both" || missingType === "checkin") && (
-                    <div>
-                      <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Giờ Vào (Check-in)</label>
-                      <input 
-                        type="time" 
-                        value={missingTimeIn}
-                        onChange={(e) => setMissingTimeIn(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none"
-                        required
-                      />
-                    </div>
-                  )}
-                  {(missingType === "both" || missingType === "checkout") && (
-                    <div>
-                      <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Giờ Ra (Check-out)</label>
-                      <input 
-                        type="time" 
-                        value={missingTimeOut}
-                        onChange={(e) => setMissingTimeOut(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none"
-                        required
-                      />
-                    </div>
-                  )}
+                {/* Date Picker */}
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ngày áp dụng</label>
+                  <input 
+                    type="date" 
+                    value={missingDate}
+                    max={requestCategory === 'bosung' ? todayStr : undefined}
+                    min={requestCategory !== 'bosung' ? todayStr : undefined}
+                    onChange={(e) => setMissingDate(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    required
+                  />
                 </div>
+
+                {/* Shift Selector */}
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ca làm việc liên quan</label>
+                  <select 
+                    value={missingShift}
+                    onChange={(e) => setMissingShift(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  >
+                    <option value="Ca Hành Chính (08:00 - 17:00)">Ca Hành Chính (08:00 - 17:00)</option>
+                    <option value="Ca Sáng (08:00 - 12:00)">Ca Sáng (08:00 - 12:00)</option>
+                    <option value="Ca Chiều (13:00 - 17:00)">Ca Chiều (13:00 - 17:00)</option>
+                    <option value="Ca Tối (18:00 - 22:00)">Ca Tối (18:00 - 22:00)</option>
+                    <option value="Cả Ngày">Cả Ngày</option>
+                  </select>
+                </div>
+
+                {/* Render conditional inputs based on Request Category */}
+                {requestCategory === 'bosung' && (
+                  <>
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Thông tin bổ sung</label>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        {[
+                          { id: "both", label: "Cả In & Out" },
+                          { id: "checkin", label: "Giờ Check-in" },
+                          { id: "checkout", label: "Giờ Check-out" }
+                        ].map((type) => (
+                          <button
+                            type="button"
+                            key={type.id}
+                            onClick={() => setMissingType(type.id)}
+                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                              missingType === type.id 
+                                ? "bg-amber-500 border-amber-500 text-white" 
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                            }`}
+                          >
+                            {type.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        {(missingType === "both" || missingType === "checkin") && (
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Vào (Check-in)</label>
+                            <input 
+                              type="time" 
+                              value={missingTimeIn}
+                              onChange={(e) => setMissingTimeIn(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none"
+                              required
+                            />
+                          </div>
+                        )}
+                        {(missingType === "both" || missingType === "checkout") && (
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Ra (Check-out)</label>
+                            <input 
+                              type="time" 
+                              value={missingTimeOut}
+                              onChange={(e) => setMissingTimeOut(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none"
+                              required
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {requestCategory === 'doica' && (
+                  <div>
+                    <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Bạn muốn đổi với ai / sang ca nào?</label>
+                    <input 
+                      type="text" 
+                      value={targetSwapShift}
+                      onChange={(e) => setTargetSwapShift(e.target.value)}
+                      placeholder="VD: Đổi sang ca Chiều thứ 4 với bạn A"
+                      className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      required
+                    />
+                  </div>
+                )}
 
                 {/* Reason Text Area & Chips */}
                 <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Lý do điều chỉnh</label>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Lý do chi tiết</label>
                   <textarea 
                     value={missingReason}
                     onChange={(e) => setMissingReason(e.target.value)}
-                    placeholder="Vui lòng nhập lý do cụ thể..."
+                    placeholder="Vui lòng nhập lý do..."
                     rows={3}
                     className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     required
                   />
                   
-                  {/* Quick suggestion chips */}
+                  {/* Quick suggestion chips based on category */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {[
-                      "Lỗi thiết bị chấm công",
-                      "Quên quẹt vân tay",
-                      "Hỗ trợ chi nhánh khác",
-                      "Đi tiếp khách ngoài tiệm"
-                    ].map((chip) => (
+                    {(requestCategory === 'bosung' ? [
+                      "Lỗi máy chấm công", "Quên quẹt vân tay", "Đi tiếp khách"
+                    ] : requestCategory === 'xinnghi' ? [
+                      "Bận việc gia đình", "Ốm đau / Khám bệnh", "Việc cá nhân đột xuất"
+                    ] : [
+                      "Bận lịch học", "Kẹt xe / Xe hỏng", "Nhờ bạn làm thay"
+                    ]).map((chip) => (
                       <button
                         type="button"
                         key={chip}
@@ -787,16 +879,10 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                  className="w-full py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg mt-4"
                 >
-                  {submitting ? (
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Gửi yêu cầu phê duyệt
-                    </>
-                  )}
+                  <Send className="w-4 h-4" />
+                  {submitting ? "Đang gửi..." : "Gửi Yêu Cầu"}
                 </button>
               </form>
             </div>

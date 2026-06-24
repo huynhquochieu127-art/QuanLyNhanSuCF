@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, Edit, Trash2, X, Lock, Unlock } from "lucide-react";
+import { Search, Plus, Edit, Trash2, X, Lock, Unlock, KeyRound, Users, UserCheck, ShieldAlert, UserX, CheckCircle, XCircle, Calendar, Clock, ClipboardList } from "lucide-react";
 import AdminLayout from "./AdminLayout";
 import axios from "axios";
 import { toast } from "sonner";
@@ -13,11 +13,17 @@ export default function EmployeeDirectory() {
   // Lấy user role hiện tại để phân quyền hiển thị
   const [currentUserRole, setCurrentUserRole] = useState("3");
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
+    const userStr = sessionStorage.getItem("user");
     if (userStr) {
       setCurrentUserRole(String(JSON.parse(userStr).MaVaiTro));
     }
   }, []);
+
+  // Manager Approvals state
+  const [pendingLeave, setPendingLeave] = useState([]);
+  const [pendingAttendance, setPendingAttendance] = useState([]);
+  const [pendingShifts, setPendingShifts] = useState([]);
+  const [approvalTab, setApprovalTab] = useState("leave");
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -69,6 +75,68 @@ export default function EmployeeDirectory() {
     fetchPositions();
   }, []);
 
+  const fetchApprovals = async () => {
+    try {
+      const [leaveRes, attRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/timekeeping/leave'),
+        axios.get('http://localhost:5000/api/timekeeping/requests'),
+      ]);
+      if (leaveRes.data.success) {
+        setPendingLeave(leaveRes.data.data.filter(r => r.TrangThai === "pending"));
+      }
+      if (attRes.data.success) {
+        setPendingAttendance(attRes.data.data.filter(r => r.TrangThai === "pending"));
+      }
+
+      // Ca làm việc: Lấy tuần hiện tại
+      const d = new Date();
+      const day = d.getDay(), diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const currentWeekStart = new Date(new Date(d).setDate(diff));
+      const end = new Date(currentWeekStart);
+      end.setDate(end.getDate() + 6);
+      
+      const startStr = currentWeekStart.toISOString().split("T")[0];
+      const endStr = end.toISOString().split("T")[0];
+      
+      const shiftRes = await axios.get(`http://localhost:5000/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
+      if (shiftRes.data.success) {
+        setPendingShifts(shiftRes.data.data.filter(r => r.TrangThai === "pending"));
+      }
+    } catch (e) {
+      console.error("Lỗi lấy dữ liệu duyệt:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUserRole === "2" || currentUserRole === "1") {
+      fetchApprovals();
+    }
+  }, [currentUserRole]);
+
+  const handleLeaveAction = async (id, status) => {
+    try {
+      await axios.put(`http://localhost:5000/api/timekeeping/leave/${id}/status`, { status, GhiChuQL: "" });
+      toast.success(status === "approved" ? "Đã duyệt đơn nghỉ!" : "Đã từ chối đơn nghỉ!");
+      fetchApprovals();
+    } catch (e) { toast.error("Lỗi duyệt đơn"); }
+  };
+
+  const handleApproveAttendance = async (id, status) => {
+    try {
+      await axios.put(`http://localhost:5000/api/timekeeping/request/${id}/status`, { status });
+      toast.success(status === "approved" ? "Đã duyệt!" : "Đã từ chối!");
+      fetchApprovals();
+    } catch (e) { toast.error("Lỗi cập nhật"); }
+  };
+
+  const handleApproveShift = async (id, status) => {
+    try {
+      await axios.put(`http://localhost:5000/api/shifts/register/${id}/status`, { status });
+      toast.success(status === "approved" ? "Đã duyệt đăng ký ca" : "Đã từ chối đăng ký ca");
+      fetchApprovals();
+    } catch (e) { toast.error("Lỗi cập nhật"); }
+  };
+
   const handleOpenModal = (employee = null) => {
     if (employee) {
       setEditingId(employee.MaNhanVien);
@@ -94,7 +162,7 @@ export default function EmployeeDirectory() {
         SoDienThoai: '',
         ChucVu: '',
         LoaiNhanVien: 'Full-time',
-        Luong: '',
+        Luong: '5000000',
         TrangThai: 'Đang làm việc',
         Email: '',
         MatKhau: '',
@@ -119,17 +187,15 @@ export default function EmployeeDirectory() {
         newData.LoaiNhanVien = 'Full-time';
       }
       
-      // Quy tắc: Part-time cố định lương 30K/h
-      if (name === 'LoaiNhanVien' && value === 'Part-time') {
-        newData.Luong = '30000';
-      } else if (name === 'LoaiNhanVien' && value === 'Full-time') {
-        // Reset lương khi chuyển lại Full-time nếu đang là 30k
-        if (prev.Luong === '30000') newData.Luong = '';
-      }
-      
-      // Ràng buộc chéo khi Role thay đổi (kéo theo LoaiNhanVien đổi)
+      // Tự động set lương dựa trên phân quyền và loại nhân viên
       if (newData.LoaiNhanVien === 'Part-time') {
         newData.Luong = '30000';
+      } else if (newData.LoaiNhanVien === 'Full-time') {
+        if (newData.Role === '2') {
+          newData.Luong = '8000000';
+        } else {
+          newData.Luong = '5000000';
+        }
       }
 
       return newData;
@@ -190,13 +256,37 @@ export default function EmployeeDirectory() {
     }
   };
 
-  const filteredEmployees = employeeList.filter(
-    (emp) =>
-      (emp.HoTen && emp.HoTen.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (emp.MaNhanVienCode && emp.MaNhanVienCode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (emp.SoDienThoai && emp.SoDienThoai.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (emp.Email && emp.Email.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const handleResetPassword = async (id) => {
+    const newPassword = window.prompt("Nhập mật khẩu mới cho tài khoản này (Để trống để hủy):", "123456");
+    if (newPassword) {
+      try {
+        const res = await axios.put(`http://localhost:5000/api/auth/account/${id}/reset-password`, { newPassword });
+        if (res.data.success) {
+          toast.success(res.data.message);
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.message || "Lỗi khi đặt lại mật khẩu");
+      }
+    }
+  };
+
+  // Lọc ra danh sách nhân viên được phép hiển thị (Quản lý không thấy Admin)
+  const visibleEmployees = employeeList.filter(emp => {
+    if (currentUserRole !== "1" && String(emp.MaVaiTro) === "1") {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredEmployees = visibleEmployees.filter((emp) => {
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      (emp.HoTen && emp.HoTen.toLowerCase().includes(searchLower)) ||
+      (emp.MaNhanVienCode && emp.MaNhanVienCode.toLowerCase().includes(searchLower)) ||
+      (emp.SoDienThoai && emp.SoDienThoai.toLowerCase().includes(searchLower)) ||
+      (emp.Email && emp.Email.toLowerCase().includes(searchLower))
+    );
+  });
 
   const getStatusBadgeColor = (status) => {
     if (status === 'Đang làm việc') return "bg-emerald-100 text-emerald-700 border-emerald-200";
@@ -219,6 +309,140 @@ export default function EmployeeDirectory() {
           <h1 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Quản lý Nhân Sự & Tài Khoản</h1>
           <p className="text-slate-500 font-medium">Hồ sơ nhân viên và quyền truy cập hệ thống</p>
         </div>
+
+        {/* Approvals Dashboard cho Quản lý */}
+        {!isAdmin && currentUserRole === "2" && (
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6">
+            <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
+              <ClipboardList className="w-6 h-6 text-amber-500" />
+              Đơn Chờ Duyệt
+            </h2>
+            <div className="flex gap-2 border-b border-slate-200 mb-4 overflow-x-auto">
+              {[
+                { key: "leave", label: "Đơn xin nghỉ", badge: pendingLeave.length },
+                { key: "attendance", label: "Bổ sung điểm danh", badge: pendingAttendance.length },
+                { key: "shift", label: "Đăng ký ca", badge: pendingShifts.length },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setApprovalTab(tab.key)}
+                  className={`py-3 px-4 text-sm font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${
+                    approvalTab === tab.key ? "border-amber-500 text-amber-600" : "border-transparent text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {tab.label}
+                  {tab.badge > 0 && (
+                    <span className="bg-rose-500 text-white text-xs px-2 py-0.5 rounded-full">{tab.badge}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+              {approvalTab === "leave" && (
+                pendingLeave.length === 0 ? <p className="text-slate-500 text-center py-4 font-medium">Không có đơn xin nghỉ chờ duyệt</p> :
+                pendingLeave.map(req => (
+                  <div key={req.MaDon} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900">{req.EmployeeName} <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded ml-2">{req.LoaiNghi === 'phep' ? 'Nghỉ phép' : req.LoaiNghi === 'om' ? 'Nghỉ ốm' : req.LoaiNghi === 'viec_rieng' ? 'Việc riêng' : 'Khác'}</span></div>
+                      <div className="text-sm text-slate-600 mt-1">Nghỉ từ: <span className="font-bold">{new Date(req.NgayNghi).toLocaleDateString("vi-VN")}</span> {req.NgayNghiDen && req.NgayNghiDen !== req.NgayNghi ? `đến ${new Date(req.NgayNghiDen).toLocaleDateString("vi-VN")}` : ""}</div>
+                      <div className="text-sm italic text-slate-500 mt-1">"{req.LyDo}"</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleLeaveAction(req.MaDon, "approved")} className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"><CheckCircle className="w-4 h-4"/> Duyệt</button>
+                      <button onClick={() => handleLeaveAction(req.MaDon, "rejected")} className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-rose-600 transition-colors"><XCircle className="w-4 h-4"/> Từ chối</button>
+                    </div>
+                  </div>
+                ))
+              )}
+              {approvalTab === "attendance" && (
+                pendingAttendance.length === 0 ? <p className="text-slate-500 text-center py-4 font-medium">Không có yêu cầu điểm danh chờ duyệt</p> :
+                pendingAttendance.map(req => (
+                  <div key={req.MaYeuCau} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900">{req.EmployeeName} <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded ml-2">{req.Loai}</span></div>
+                      <div className="text-sm text-slate-600 mt-1">Ngày: <span className="font-bold">{new Date(req.Ngay).toLocaleDateString("vi-VN")}</span> {req.CaLam && `- Ca: ${req.CaLam}`}</div>
+                      <div className="text-sm italic text-slate-500 mt-1">"{req.LyDo}"</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApproveAttendance(req.MaYeuCau, "approved")} className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"><CheckCircle className="w-4 h-4"/> Duyệt</button>
+                      <button onClick={() => handleApproveAttendance(req.MaYeuCau, "rejected")} className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-rose-600 transition-colors"><XCircle className="w-4 h-4"/> Từ chối</button>
+                    </div>
+                  </div>
+                ))
+              )}
+              {approvalTab === "shift" && (
+                pendingShifts.length === 0 ? <p className="text-slate-500 text-center py-4 font-medium">Không có đăng ký ca chờ duyệt</p> :
+                pendingShifts.map(req => (
+                  <div key={req.MaDangKy} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900">{req.HoTen}</div>
+                      <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
+                        <span className="flex items-center gap-1 font-bold"><Calendar className="w-4 h-4"/> {new Date(req.NgayLam).toLocaleDateString("vi-VN")}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-4 h-4 ml-1"/> {req.TenCaLam} ({req.GioBatDau}-{req.GioKetThuc})</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApproveShift(req.MaDangKy, "approved")} className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"><CheckCircle className="w-4 h-4"/> Duyệt</button>
+                      <button onClick={() => handleApproveShift(req.MaDangKy, "rejected")} className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-rose-600 transition-colors"><XCircle className="w-4 h-4"/> Từ chối</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mini Dashboard */}
+        {isAdmin && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold text-slate-500 uppercase">Tổng nhân sự</p>
+              </div>
+              <h2 className="text-2xl font-black text-slate-900">{visibleEmployees.length}</h2>
+            </div>
+            
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold text-slate-500 uppercase">Đang làm việc</p>
+              </div>
+              <h2 className="text-2xl font-black text-slate-900">
+                {visibleEmployees.filter(emp => emp.TrangThai === 'Đang làm việc').length}
+              </h2>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <UserX className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold text-slate-500 uppercase">Tài khoản bị khóa</p>
+              </div>
+              <h2 className="text-2xl font-black text-slate-900">
+                {visibleEmployees.filter(emp => emp.TrangThaiHoatDong === 0).length}
+              </h2>
+            </div>
+
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold text-slate-500 uppercase">{isAdmin ? "Quản lý / Admin" : "Quản lý"}</p>
+              </div>
+              <h2 className="text-2xl font-black text-slate-900">
+                {visibleEmployees.filter(emp => String(emp.MaVaiTro) === '1' || String(emp.MaVaiTro) === '2').length}
+              </h2>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
           <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
@@ -302,6 +526,13 @@ export default function EmployeeDirectory() {
                               {employee.TrangThaiHoatDong === 1 ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                             </button>
                             <button
+                              onClick={() => handleResetPassword(employee.MaNhanVien)}
+                              className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors shadow-sm"
+                              title="Đặt lại mật khẩu"
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleOpenModal(employee)}
                               className="p-2 text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors shadow-sm"
                               title="Sửa thông tin"
@@ -326,7 +557,7 @@ export default function EmployeeDirectory() {
           </div>
 
           <div className="mt-6 flex items-center justify-between text-sm font-medium text-slate-500">
-            <span>Hiển thị {filteredEmployees.length} / {employeeList.length} nhân sự</span>
+            <span>Hiển thị {filteredEmployees.length} / {visibleEmployees.length} nhân sự</span>
           </div>
         </div>
 

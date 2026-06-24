@@ -1,5 +1,4 @@
 import { createBrowserRouter, Navigate } from "react-router";
-import POSDashboard from "./components/POSDashboard";
 import Timekeeping from "./components/Timekeeping";
 import ShiftScheduling from "./components/ShiftScheduling";
 import Home from "./components/Home";
@@ -8,12 +7,16 @@ import EmployeeDirectory from "./components/EmployeeDirectory";
 import ProductManagement from "./components/ProductManagement";
 import CustomerLoyalty from "./components/CustomerLoyalty";
 import SystemLogs from "./components/SystemLogs";
+import PayrollManagement from "./components/PayrollManagement";
+import ShiftManagement from "./components/ShiftManagement";
+import EmployeeTimesheet from "./components/EmployeeTimesheet";
+import MyMonthlyTimesheet from "./components/MyMonthlyTimesheet";
 import React from "react";
 
 // Component bảo vệ Route dựa trên Token và Vai Trò (MaVaiTro)
 function ProtectedRoute({ children, allowedRoles }) {
-  const token = localStorage.getItem("token");
-  const userStr = localStorage.getItem("user");
+  const token = sessionStorage.getItem("token");
+  const userStr = sessionStorage.getItem("user");
 
   if (!token || !userStr) {
     // Chưa đăng nhập, chuyển hướng về Login
@@ -44,16 +47,18 @@ export const router = createBrowserRouter([
       { index: true, Component: protect(Home, [1, 2, 3]) },
       { path: "login", Component: Login },
       // Các route dùng chung cho mọi vai trò sau khi đăng nhập
-      { path: "pos", Component: protect(POSDashboard, [1, 2, 3]) },
       { path: "timekeeping", Component: protect(Timekeeping, [1, 2, 3]) },
       { path: "customers", Component: protect(CustomerLoyalty, [1, 2, 3]) },
       
       // Các route chỉ Admin (1) và Manager (2) được vào
       { path: "employees", Component: protect(EmployeeDirectory, [1, 2]) },
-      { path: "products", Component: protect(ProductManagement, [1, 2]) },
+      { path: "payroll", Component: protect(PayrollManagement, [1]) },
       
       // Route Lịch làm việc cho mọi role (Role 3 xem được, Role 1,2 sửa được)
       { path: "scheduling", Component: protect(ShiftScheduling, [1, 2, 3]) },
+      { path: "shift-management", Component: protect(ShiftManagement, [1, 2]) },
+      { path: "employee-timesheet", Component: protect(EmployeeTimesheet, [1, 2]) },
+      { path: "my-timesheet", Component: protect(MyMonthlyTimesheet, [1, 2, 3]) },
 
       // Route chỉ Admin (1) mới được vào
       { path: "logs", Component: protect(SystemLogs, [1]) },

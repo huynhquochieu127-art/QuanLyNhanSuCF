@@ -22,7 +22,7 @@ export default function Timekeeping() {
 
   // Lấy dữ liệu user từ localStorage
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
+    const userStr = sessionStorage.getItem("user");
     if (userStr) {
       const userObj = JSON.parse(userStr);
       setEmployee({ name: userObj.HoTen || userObj.Email, id: userObj.MaTaiKhoan, role: String(userObj.MaVaiTro) });
@@ -121,6 +121,92 @@ export default function Timekeeping() {
       }
     } catch (err) {
       toast.error("Lỗi khi cập nhật trạng thái yêu cầu");
+    }
+  };
+
+  // Trạng thái và xử lý bảng công tháng
+  const [tsMonth, setTsMonth] = useState(6);
+  const [tsYear, setTsYear] = useState(2026);
+  const [timesheets, setTimesheets] = useState([]);
+  const [personalTimesheet, setPersonalTimesheet] = useState(null);
+  const [managerGhiChu, setManagerGhiChu] = useState({});
+  const [employeePhanHoi, setEmployeePhanHoi] = useState("");
+
+  const fetchTimesheets = async () => {
+    try {
+      if (employee.role === "1" || employee.role === "2") {
+        const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}`);
+        if (res.data.success) {
+          setTimesheets(res.data.data);
+          const notes = {};
+          res.data.data.forEach(ts => {
+            notes[ts.MaBangCong] = ts.GhiChuQL || "";
+          });
+          setManagerGhiChu(notes);
+        }
+      } else if (employee.id) {
+        const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}&employeeId=${employee.id}`);
+        if (res.data.success) {
+          setPersonalTimesheet(res.data.data);
+          setEmployeePhanHoi(res.data.data?.PhanHoiNV || "");
+        } else {
+          setPersonalTimesheet(null);
+        }
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải bảng công tháng:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (employee.id) {
+      fetchTimesheets();
+    }
+  }, [tsMonth, tsYear, employee.id, employee.role]);
+
+  const handleSendToEmployee = async (maBangCong) => {
+    try {
+      const ghiChu = managerGhiChu[maBangCong] || "";
+      const res = await axios.post("http://localhost:5000/api/timesheets/send-to-employee", {
+        maBangCong,
+        ghiChu
+      });
+      if (res.data.success) {
+        toast.success("Đã gửi bảng công cho nhân viên kiểm tra!");
+        fetchTimesheets();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi bảng công");
+    }
+  };
+
+  const handleEmployeeReply = async (maBangCong, isAgree) => {
+    try {
+      const res = await axios.post("http://localhost:5000/api/timesheets/employee-reply", {
+        maBangCong,
+        phanHoi: isAgree ? "Đồng ý" : employeePhanHoi,
+        isAgree
+      });
+      if (res.data.success) {
+        toast.success(isAgree ? "Đã xác nhận đồng ý bảng công!" : "Đã gửi ý kiến phản hồi!");
+        fetchTimesheets();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi phản hồi");
+    }
+  };
+
+  const handleSubmitToAdmin = async (maBangCong) => {
+    try {
+      const res = await axios.post("http://localhost:5000/api/timesheets/submit-to-admin", {
+        maBangCong
+      });
+      if (res.data.success) {
+        toast.success("Đã duyệt và gửi bảng công lên Admin!");
+        fetchTimesheets();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi Admin");
     }
   };
 
@@ -297,6 +383,8 @@ export default function Timekeeping() {
                 </table>
               </div>
             </div>
+
+            {/* BẢNG CÔNG THÁNG CỦA NHÂN VIÊN ĐÃ ĐƯỢC CHUYỂN SANG TRANG RIÊNG */}
           </div>
         )}
 
@@ -438,6 +526,140 @@ export default function Timekeeping() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: MONTHLY TIMESHEET MANAGEMENT (MANAGER/ADMIN) */}
+        {activeTab === "monthly_timesheets" && isManager && (
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-slate-200 dark:border-zinc-800 p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 dark:text-white">Quản lý Bảng Công Tháng</h2>
+                <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium mt-1">Duyệt công nhân viên trước khi gửi Admin tính lương</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select 
+                  value={tsMonth} 
+                  onChange={(e) => setTsMonth(parseInt(e.target.value))}
+                  className="bg-slate-100 dark:bg-zinc-800 text-sm font-bold text-slate-700 dark:text-zinc-300 rounded-xl px-4 py-2 border-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {[...Array(12).keys()].map(i => (
+                    <option key={i+1} value={i+1}>Tháng {i+1}</option>
+                  ))}
+                </select>
+                <select 
+                  value={tsYear} 
+                  onChange={(e) => setTsYear(parseInt(e.target.value))}
+                  className="bg-slate-100 dark:bg-zinc-800 text-sm font-bold text-slate-700 dark:text-zinc-300 rounded-xl px-4 py-2 border-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {[2025, 2026, 2027].map(y => (
+                    <option key={y} value={y}>Năm {y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider rounded-tl-xl">Nhân viên</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Hợp đồng / Vai trò</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Chi tiết công</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ghi chú gửi NV</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">NV Phản hồi</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                    <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider rounded-tr-xl">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timesheets.length === 0 ? (
+                    <tr><td colSpan="7" className="text-center py-8 text-slate-500 font-medium">Không có dữ liệu nhân viên hoạt động</td></tr>
+                  ) : (
+                    timesheets.map((ts) => (
+                      <tr key={ts.MaBangCong} className="border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{ts.HoTen}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">Mã NV: {ts.MaNhanVien}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="text-sm font-bold text-slate-700 dark:text-zinc-300">{ts.LoaiNhanVien}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium">{ts.ChucVu}</p>
+                        </td>
+                        <td className="py-3 px-4 text-sm font-semibold text-slate-700 dark:text-zinc-300">
+                          <div className="space-y-0.5">
+                            <p>Số công: <span className="font-bold text-slate-900 dark:text-white">{ts.SoCong || 0}</span></p>
+                            <p>Giờ làm: <span className="font-bold text-slate-900 dark:text-white">{ts.SoGioLam || 0}h</span></p>
+                            <p>Nghỉ phép: <span className="font-bold text-rose-500">{ts.SoNgayNghi || 0} ngày</span></p>
+                            <p>Đi trễ: <span className="font-bold text-amber-500">{ts.SoNgayTre || 0} lần</span></p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {ts.TrangThai === 'draft' ? (
+                            <input
+                              type="text"
+                              value={managerGhiChu[ts.MaBangCong] || ""}
+                              onChange={(e) => setManagerGhiChu(prev => ({ ...prev, [ts.MaBangCong]: e.target.value }))}
+                              placeholder="Nhập lời nhắn gửi NV..."
+                              className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 w-full max-w-[180px]"
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-700 dark:text-zinc-400 max-w-[180px] truncate" title={ts.GhiChuQL}>
+                              {ts.GhiChuQL || <span className="text-slate-400 italic">Không có ghi chú</span>}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-xs font-semibold">
+                          {ts.PhanHoiNV ? (
+                            <span className={ts.PhanHoiNV === 'Đồng ý' ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                              "{ts.PhanHoiNV}"
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">Chưa phản hồi</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
+                            ts.TrangThai === 'draft' ? 'bg-slate-100 text-slate-700' :
+                            ts.TrangThai === 'sent_to_emp' ? 'bg-amber-100 text-amber-700' :
+                            ts.TrangThai === 'emp_replied' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                            'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {ts.TrangThai === 'draft' && 'Nháp'}
+                            {ts.TrangThai === 'sent_to_emp' && 'Đã gửi NV'}
+                            {ts.TrangThai === 'emp_replied' && 'NV phản hồi'}
+                            {ts.TrangThai === 'submitted_to_admin' && 'Đã gửi Admin'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {ts.TrangThai === 'draft' && (
+                            <button
+                              onClick={() => handleSendToEmployee(ts.MaBangCong)}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-colors shadow-md shadow-amber-500/10"
+                            >
+                              Gửi nhân viên
+                            </button>
+                          )}
+                          {(ts.TrangThai === 'sent_to_emp' || ts.TrangThai === 'emp_replied') && (
+                            <button
+                              onClick={() => handleSubmitToAdmin(ts.MaBangCong)}
+                              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-colors shadow-md shadow-emerald-500/10"
+                            >
+                              Duyệt & Gửi Admin
+                            </button>
+                          )}
+                          {ts.TrangThai === 'submitted_to_admin' && (
+                            <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4 text-emerald-500" /> Hoàn thành
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

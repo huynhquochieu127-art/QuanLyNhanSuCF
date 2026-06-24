@@ -13,6 +13,10 @@ const config = {
 };
 
 const tablesToDrop = [
+  'dangky_ca',
+  'don_xin_nghi',
+  'bangcong_thang',
+  'mamgiamgia',
   'chitietdonhang',
   'donhang',
   'goidouong',
@@ -299,6 +303,79 @@ async function rebuild() {
           GhiChu NVARCHAR(255) NULL
         )
       `
+    },
+    // New Feature Tables
+    {
+      name: 'dangky_ca',
+      query: `
+        CREATE TABLE dangky_ca (
+          MaDangKy    INT IDENTITY(1,1) PRIMARY KEY,
+          MaNhanVien  INT NOT NULL FOREIGN KEY REFERENCES nhanvien(MaNhanVien) ON DELETE CASCADE,
+          MaCaLam     INT NOT NULL FOREIGN KEY REFERENCES calam(MaCaLam) ON DELETE CASCADE,
+          NgayLam     DATE NOT NULL,
+          TrangThai   NVARCHAR(30) DEFAULT 'pending' CHECK (TrangThai IN ('pending', 'approved', 'rejected')),
+          GhiChu      NVARCHAR(MAX) NULL,
+          NgayTao     DATETIME DEFAULT GETDATE(),
+          CONSTRAINT UQ_dangky_ca UNIQUE (MaNhanVien, MaCaLam, NgayLam)
+        )
+      `
+    },
+    {
+      name: 'don_xin_nghi',
+      query: `
+        CREATE TABLE don_xin_nghi (
+          MaDon       INT IDENTITY(1,1) PRIMARY KEY,
+          MaNhanVien  INT NOT NULL FOREIGN KEY REFERENCES nhanvien(MaNhanVien) ON DELETE CASCADE,
+          NgayNghi    DATE NOT NULL,
+          NgayNghiDen DATE NULL,
+          LyDo        NVARCHAR(MAX) NOT NULL,
+          LoaiNghi    NVARCHAR(30) DEFAULT 'phep' CHECK (LoaiNghi IN ('phep', 'om', 'viec_rieng', 'khac')),
+          TrangThai   NVARCHAR(30) DEFAULT 'pending' CHECK (TrangThai IN ('pending', 'approved', 'rejected')),
+          GhiChuQL    NVARCHAR(MAX) NULL,
+          NgayTao     DATETIME DEFAULT GETDATE()
+        )
+      `
+    },
+    {
+      name: 'bangcong_thang',
+      query: `
+        CREATE TABLE bangcong_thang (
+          MaBangCong  INT IDENTITY(1,1) PRIMARY KEY,
+          MaNhanVien  INT NOT NULL FOREIGN KEY REFERENCES nhanvien(MaNhanVien) ON DELETE CASCADE,
+          Thang       INT NOT NULL,
+          Nam         INT NOT NULL,
+          SoCong      DECIMAL(5,2) DEFAULT 0,
+          SoGioLam    DECIMAL(8,2) DEFAULT 0,
+          SoNgayNghi  INT DEFAULT 0,
+          SoNgayTre   INT DEFAULT 0,
+          GhiChuQL    NVARCHAR(MAX) NULL,
+          PhanHoiNV   NVARCHAR(MAX) NULL,
+          TrangThai   NVARCHAR(30) DEFAULT 'draft' CHECK (TrangThai IN ('draft', 'sent_to_emp', 'emp_replied', 'confirmed', 'submitted_to_admin')),
+          NgayGui     DATETIME NULL,
+          NgayXacNhan DATETIME NULL,
+          NgayTao     DATETIME DEFAULT GETDATE(),
+          CONSTRAINT UQ_bangcong_thang UNIQUE (MaNhanVien, Thang, Nam)
+        )
+      `
+    },
+    {
+      name: 'mamgiamgia',
+      query: `
+        CREATE TABLE mamgiamgia (
+          MaMG        INT IDENTITY(1,1) PRIMARY KEY,
+          MaCode      VARCHAR(50) NOT NULL UNIQUE,
+          TenMG       NVARCHAR(100) NULL,
+          LoaiGiam    NVARCHAR(30) DEFAULT 'percent' CHECK (LoaiGiam IN ('percent', 'fixed')),
+          GiaTriGiam  DECIMAL(10,2) NOT NULL,
+          GiaTriToiDa DECIMAL(10,2) DEFAULT NULL,
+          SoLanDung   INT DEFAULT 0,
+          GioiHanDung INT DEFAULT NULL,
+          NgayBatDau  DATE DEFAULT CAST(GETDATE() AS DATE),
+          NgayHetHan  DATE DEFAULT NULL,
+          TrangThai   TINYINT DEFAULT 1,
+          NgayTao     DATETIME DEFAULT GETDATE()
+        )
+      `
     }
   ];
 
@@ -333,6 +410,25 @@ async function rebuild() {
       (4, N'Đỗ Văn Đoàn', 'doan1@gmail.com', '$2b$10$5EG.JuTvA971.aR81Kvm7.MlILUfrUaRvrLVElKQEdF.jnkrhmwbm', NULL, 3, 1)
     `);
     console.log('- Seeded: taikhoan');
+
+    // Seed nhanvien
+    await pool.request().query(`
+      INSERT INTO nhanvien (MaNhanVien, MaTaiKhoan, MaNhanVienCode, HoTen, GioiTinh, SoDienThoai, DiaChi, ChucVu, LoaiNhanVien, NgayVaoLam, Luong, TrangThai) VALUES
+      (1, 1, 'NV001', N'Nguyễn Văn Admin', N'Nam', '0912345678', N'Hà Nội', N'Quản lý', N'Full-time', '2026-01-01', 15000000, N'Đang làm việc'),
+      (2, 2, 'NV002', N'Nguyễn Văn Manager', N'Nam', '0912345678', N'Hồ Chí Minh', N'Quản lý', N'Full-time', '2026-01-01', 10000000, N'Đang làm việc'),
+      (3, 3, 'NV003', N'Đỗ Văn Đoàn', N'Nam', '0987654321', N'Đà Nẵng', N'Phục vụ', N'Part-time', '2026-06-01', 6000000, N'Đang làm việc'),
+      (4, 4, 'NV004', N'Đỗ Văn Đoàn', N'Nam', '0987654322', N'Hải Phòng', N'Pha chế', N'Part-time', '2026-06-01', 6000000, N'Đang làm việc')
+    `);
+    console.log('- Seeded: nhanvien');
+
+    // Seed calam
+    await pool.request().query(`
+      INSERT INTO calam (MaCaLam, TenCaLam, GioBatDau, GioKetThuc, MoTa) VALUES
+      (1, N'Ca Sáng', '06:00:00', '12:00:00', N'Ca làm việc buổi sáng'),
+      (2, N'Ca Chiều', '12:00:00', '18:00:00', N'Ca làm việc buổi chiều'),
+      (3, N'Ca Tối', '18:00:00', '23:00:00', N'Ca làm việc buổi tối')
+    `);
+    console.log('- Seeded: calam');
 
     // Seed danhmuc
     await pool.request().query(`
@@ -384,12 +480,21 @@ async function rebuild() {
     `);
     console.log('- Seeded: chucvu');
 
+    // Seed mamgiamgia
+    await pool.request().query(`
+      INSERT INTO mamgiamgia (MaCode, TenMG, LoaiGiam, GiaTriGiam, GioiHanDung, NgayHetHan, TrangThai) VALUES
+      ('WELCOME10', N'Chào mừng khách mới', 'percent', 10, 100, DATEADD(day, 30, GETDATE()), 1),
+      ('GIAMGIA20K', N'Giảm 20,000đ cho bill từ 100K', 'fixed', 20000, 50, DATEADD(day, 14, GETDATE()), 1),
+      ('SUMMER15', N'Summer Sale 15%', 'percent', 15, NULL, DATEADD(day, 60, GETDATE()), 0)
+    `);
+    console.log('- Seeded: mamgiamgia');
+
     console.log('✅ All data seeded successfully!');
   } catch (err) {
     console.error('❌ Failed to seed data:', err.message);
     process.exit(1);
   } finally {
-    await sql.close();
+    await pool.close();
     process.exit(0);
   }
 }

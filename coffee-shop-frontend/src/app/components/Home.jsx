@@ -56,7 +56,7 @@ export default function Home() {
   const [payslipData, setPayslipData] = useState(null);
 
   // States của Bổ sung điểm danh / Yêu cầu
-  const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica
+  const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica, fulltime, nghiviec
   const [missingDate, setMissingDate] = useState(todayStr);
   const [missingShift, setMissingShift] = useState("Ca Hành Chính (08:00 - 17:00)");
   const [missingType, setMissingType] = useState("both"); // both, checkin, checkout
@@ -74,7 +74,11 @@ export default function Home() {
   // Danh sách đơn bổ sung điểm danh
   const [attendanceRequests, setAttendanceRequests] = useState([]);
 
-  // Fetch dữ liệu chấm công hôm nay và danh sách yêu cầu
+  // States cho Thông báo
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
+  // Fetch dữ liệu chấm công hôm nay, danh sách yêu cầu và thông báo
   useEffect(() => {
     if (user?.MaTaiKhoan) {
       const fetchTimekeeping = async () => {
@@ -91,12 +95,22 @@ export default function Home() {
             setAttendanceRequests(reqRes.data.data.map(r => ({
               id: `RQ-${r.MaYeuCau}`,
               date: new Date(r.Ngay).toISOString().split('T')[0],
-              shift: r.CaLam,
+              shift: r.CaLam || "N/A",
               type: r.Loai,
               time: r.ThoiGian,
               reason: r.LyDo,
               status: r.TrangThai
             })));
+          }
+
+          // Fetch notifications
+          try {
+            const notifRes = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
+            if (notifRes.data.success) {
+              setNotifications(notifRes.data.data);
+            }
+          } catch (err) {
+            console.warn("Không lấy được danh sách thông báo:", err);
           }
 
           // Fetch profile details from employee table
@@ -187,27 +201,36 @@ export default function Home() {
     try {
       let typeText = "";
       let timeText = "";
+      let caText = missingShift;
       
       if (requestCategory === 'bosung') {
         typeText = `Bổ sung: ${missingType === 'both' ? 'Cả In/Out' : (missingType === 'checkin' ? 'Check-in' : 'Check-out')}`;
         timeText = missingType === 'both' ? `${missingTimeIn} - ${missingTimeOut}` : (missingType === 'checkin' ? missingTimeIn : missingTimeOut);
       } else if (requestCategory === 'xinnghi') {
-        typeText = "Xin nghỉ phép";
+        typeText = "Xin nghỉ ca làm";
         timeText = "Cả ca";
       } else if (requestCategory === 'doica') {
         typeText = "Xin đổi ca";
         if (!targetSwapShift.trim()) {
-          toast.error("Vui lòng nhập ca muốn đổi sang");
+          toast.error("Vui lòng nhập thông tin ca muốn đổi");
           setSubmitting(false);
           return;
         }
         timeText = `Đổi sang: ${targetSwapShift}`;
+      } else if (requestCategory === 'fulltime') {
+        typeText = "Xin chuyển Full-time";
+        timeText = `Áp dụng từ: ${missingDate}`;
+        caText = ""; 
+      } else if (requestCategory === 'nghiviec') {
+        typeText = "Xin nghỉ việc";
+        timeText = `Nghỉ từ ngày: ${missingDate}`;
+        caText = ""; 
       }
       
       const payload = {
         MaNhanVien: user.MaTaiKhoan,
         Ngay: missingDate,
-        CaLam: missingShift,
+        CaLam: caText,
         Loai: typeText,
         ThoiGian: timeText,
         LyDo: missingReason
@@ -219,7 +242,7 @@ export default function Home() {
         const newRequest = {
           id: `RQ-${res.data.data.id}`,
           date: missingDate,
-          shift: missingShift,
+          shift: caText || "N/A",
           type: typeText,
           time: timeText,
           reason: missingReason,
@@ -228,7 +251,8 @@ export default function Home() {
         
         setAttendanceRequests([newRequest, ...attendanceRequests]);
         setMissingReason("");
-        toast.success("Gửi yêu cầu bổ sung điểm danh thành công! Đang chờ phê duyệt.");
+        setTargetSwapShift("");
+        toast.success("Gửi yêu cầu thành công! Đang chờ phê duyệt.");
       }
     } catch (error) {
       toast.error("Lỗi khi gửi yêu cầu");
@@ -242,6 +266,114 @@ export default function Home() {
     setAttendanceRequests(updated);
     localStorage.setItem(`attendance_requests_${user?.MaTaiKhoan}`, JSON.stringify(updated));
     toast.success("Đã hủy yêu cầu bổ sung thành công.");
+  };
+
+  const handleMarkNotifRead = async (id, isRequest) => {
+    try {
+      await axios.put(`http://localhost:5000/api/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.MaThongBao === id ? { ...n, TrangThaiDoc: 1 } : n));
+      setShowNotifDropdown(false);
+      if (isRequest && (userRole === "1" || userRole === "2")) {
+        window.location.href = "/timekeeping"; 
+      }
+    } catch (err) {
+      console.error("Lỗi khi đọc thông báo:", err);
+    }
+  };
+
+  const renderBellNotification = () => {
+    const unreadCount = notifications.filter(n => n.TrangThaiDoc === 0).length;
+    return (
+      <div className="relative flex-shrink-0">
+        <button 
+          onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+          className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300 relative"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900 text-white text-[10px] font-black flex items-center justify-center animate-bounce">
+              {unreadCount}
+            </span>
+          )}
+        </button>
+
+        {showNotifDropdown && (
+          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden py-1">
+            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 flex justify-between items-center">
+              <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider">Thông báo</span>
+              {unreadCount > 0 && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      for (const notif of notifications) {
+                        if (notif.TrangThaiDoc === 0) {
+                          await axios.put(`http://localhost:5000/api/notifications/${notif.MaThongBao}/read`);
+                        }
+                      }
+                      setNotifications(prev => prev.map(n => ({ ...n, TrangThaiDoc: 1 })));
+                      toast.success("Đã đọc tất cả thông báo");
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  }}
+                  className="text-[10px] text-blue-500 hover:underline font-bold"
+                >
+                  Đọc tất cả
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-850">
+              {notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                  Chưa có thông báo nào
+                </div>
+              ) : (
+                notifications.map((notif) => (
+                  <div 
+                    key={notif.MaThongBao}
+                    onClick={() => handleMarkNotifRead(notif.MaThongBao, notif.Loai === 'request')}
+                    className={`px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-855 transition-colors cursor-pointer text-left relative flex gap-3 ${
+                      notif.TrangThaiDoc === 0 ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
+                    }`}
+                  >
+                    <div className="mt-0.5">
+                      {notif.Loai === 'request' ? (
+                        <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                          <AlertCircle className="w-4 h-4" />
+                        </div>
+                      ) : notif.Loai === 'approval' ? (
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                          <Bell className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-bold truncate ${notif.TrangThaiDoc === 0 ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-zinc-400'}`}>
+                        {notif.TieuDe}
+                      </p>
+                      <p className="text-xxs text-slate-500 dark:text-zinc-500 mt-0.5 line-clamp-2">
+                        {notif.NoiDung}
+                      </p>
+                      <span className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1 block font-semibold">
+                        {new Date(notif.NgayTao).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                      </span>
+                    </div>
+                    {notif.TrangThaiDoc === 0 && (
+                      <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 self-center" />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const modules = [
@@ -338,12 +470,7 @@ export default function Home() {
               </div>
               
               {/* Bell/Notification */}
-              <div className="relative flex-shrink-0">
-                <button className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300">
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900" />
-                </button>
-              </div>
+              {renderBellNotification()}
             </div>
 
             {/* Right Panel: Attendance Card (cols 2) */}
@@ -387,11 +514,14 @@ export default function Home() {
                   <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("home_welcome")}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
-                <span className="text-xs bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400 px-3 py-1.5 rounded-full font-bold">
-                  {t("system_active")}
-                </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
+                  <span className="text-xs bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400 px-3 py-1.5 rounded-full font-bold">
+                    {t("system_active")}
+                  </span>
+                </div>
+                {renderBellNotification()}
               </div>
             </div>
 
@@ -721,17 +851,19 @@ export default function Home() {
                 {/* Loại Yêu cầu */}
                 <div>
                   <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Loại Yêu Cầu</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { id: "bosung", label: "Bổ sung công" },
-                      { id: "xinnghi", label: "Xin nghỉ phép" },
-                      { id: "doica", label: "Xin đổi ca" }
+                      { id: "xinnghi", label: "Xin nghỉ ca" },
+                      { id: "doica", label: "Xin đổi ca" },
+                      { id: "fulltime", label: "Xin chuyển Full-time" },
+                      { id: "nghiviec", label: "Xin nghỉ việc" }
                     ].map((type) => (
                       <button
                         type="button"
                         key={type.id}
                         onClick={() => setRequestCategory(type.id)}
-                        className={`py-2 px-2 rounded-xl border text-xs font-bold transition-all ${
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
                           requestCategory === type.id 
                             ? "bg-sky-500 border-sky-500 text-white shadow-md" 
                             : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-850 text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
@@ -758,20 +890,22 @@ export default function Home() {
                 </div>
 
                 {/* Shift Selector */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ca làm việc liên quan</label>
-                  <select 
-                    value={missingShift}
-                    onChange={(e) => setMissingShift(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                  >
-                    <option value="Ca Hành Chính (08:00 - 17:00)">Ca Hành Chính (08:00 - 17:00)</option>
-                    <option value="Ca Sáng (08:00 - 12:00)">Ca Sáng (08:00 - 12:00)</option>
-                    <option value="Ca Chiều (13:00 - 17:00)">Ca Chiều (13:00 - 17:00)</option>
-                    <option value="Ca Tối (18:00 - 22:00)">Ca Tối (18:00 - 22:00)</option>
-                    <option value="Cả Ngày">Cả Ngày</option>
-                  </select>
-                </div>
+                {requestCategory !== 'fulltime' && requestCategory !== 'nghiviec' && (
+                  <div>
+                    <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ca làm việc liên quan</label>
+                    <select 
+                      value={missingShift}
+                      onChange={(e) => setMissingShift(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    >
+                      <option value="Ca Hành Chính (08:00 - 17:00)">Ca Hành Chính (08:00 - 17:00)</option>
+                      <option value="Ca Sáng (08:00 - 12:00)">Ca Sáng (08:00 - 12:00)</option>
+                      <option value="Ca Chiều (13:00 - 17:00)">Ca Chiều (13:00 - 17:00)</option>
+                      <option value="Ca Tối (18:00 - 22:00)">Ca Tối (18:00 - 22:00)</option>
+                      <option value="Cả Ngày">Cả Ngày</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Render conditional inputs based on Request Category */}
                 {requestCategory === 'bosung' && (
@@ -860,8 +994,12 @@ export default function Home() {
                       "Lỗi máy chấm công", "Quên quẹt vân tay", "Đi tiếp khách"
                     ] : requestCategory === 'xinnghi' ? [
                       "Bận việc gia đình", "Ốm đau / Khám bệnh", "Việc cá nhân đột xuất"
-                    ] : [
+                    ] : requestCategory === 'doica' ? [
                       "Bận lịch học", "Kẹt xe / Xe hỏng", "Nhờ bạn làm thay"
+                    ] : requestCategory === 'fulltime' ? [
+                      "Muốn cống hiến lâu dài", "Đã thu xếp được lịch", "Đủ điều kiện thời gian"
+                    ] : [
+                      "Lý do cá nhân", "Chuyển nơi cư trú", "Tập trung học tập"
                     ]).map((chip) => (
                       <button
                         type="button"

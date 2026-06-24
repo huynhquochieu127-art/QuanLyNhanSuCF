@@ -17,9 +17,9 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.9.7",
+    "msnodesqlv8": "^4.1.2",
     "mssql": "^12.5.4",
-    "msnodesqlv8": "^4.1.2"
+    "mysql2": "^3.9.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

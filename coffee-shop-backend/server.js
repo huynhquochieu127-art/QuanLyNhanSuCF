@@ -21,6 +21,7 @@ const posRoutes = require('./src/routes/pos.routes');
 const tableRoutes = require('./src/routes/table.routes');
 const payrollRoutes = require('./src/routes/payroll.routes');
 const positionRoutes = require('./src/routes/position.routes');
+const notificationRoutes = require('./src/routes/notification.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
@@ -31,6 +32,7 @@ app.use('/api/pos', posRoutes);
 app.use('/api/tables', tableRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/positions', positionRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Route test cơ bản
 app.get("/", (req, res) => {

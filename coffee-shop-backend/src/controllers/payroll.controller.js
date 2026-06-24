@@ -40,7 +40,7 @@ const calculatePayroll = async (req, res) => {
        FROM bangcong_thang bc
        JOIN nhanvien nv ON bc.MaNhanVien = nv.MaNhanVien
        LEFT JOIN taikhoan tk ON nv.MaTaiKhoan = tk.MaTaiKhoan
-       WHERE bc.Thang = ? AND bc.Nam = ? AND (tk.MaVaiTro IS NULL OR tk.MaVaiTro != 1)`,
+       WHERE bc.Thang = ? AND bc.Nam = ? AND (tk.MaVaiTro IS NULL OR tk.MaVaiTro != 1) AND bc.TrangThai = 'submitted_to_admin'`,
       [m, y]
     );
 

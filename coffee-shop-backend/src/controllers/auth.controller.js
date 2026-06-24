@@ -267,10 +267,33 @@ const toggleLockAccount = async (req, res) => {
   }
 };
 
+// API: Đặt lại mật khẩu tài khoản nhân viên
+const resetPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp mật khẩu mới' });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    await db.query('UPDATE taikhoan SET MatKhau = ? WHERE MaTaiKhoan = ?', [hashedPassword, id]);
+
+    res.json({ success: true, message: 'Đã đặt lại mật khẩu thành công!' });
+  } catch (error) {
+    console.error('Lỗi khi đặt lại mật khẩu:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
 module.exports = {
   getTaiKhoan,
   login,
   register,
   logout,
-  toggleLockAccount
+  toggleLockAccount,
+  resetPassword
 };

@@ -7,6 +7,7 @@ import { useLanguage } from "../context/LanguageContext";
 import axios from "axios";
 import { toast } from "sonner";
 import AdminLayout from "./AdminLayout";
+import ShiftScheduling from "./ShiftScheduling";
 
 export default function Home() {
   const { t } = useLanguage();
@@ -53,6 +54,40 @@ export default function Home() {
   const [showMyScheduleModal, setShowMyScheduleModal] = useState(false);
   const [mySchedules, setMySchedules] = useState([]);
   const [selectedMyShift, setSelectedMyShift] = useState(null);
+
+  // Helper functions to close modals and clear URL query parameters
+  const handleClosePayslip = () => {
+    setShowPayslipModal(false);
+    navigate('/', { replace: true });
+  };
+  const handleCloseMissingAttendance = () => {
+    setShowMissingAttendanceModal(false);
+    navigate('/', { replace: true });
+  };
+  const handleCloseMySchedule = () => {
+    setShowMyScheduleModal(false);
+    setSelectedMyShift(null);
+    navigate('/', { replace: true });
+  };
+
+  // Lắng nghe URL params để mở modal từ thanh menu bên trái
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const modal = params.get("modal");
+    if (modal === "payslip") {
+      setShowPayslipModal(true);
+      setShowMissingAttendanceModal(false);
+      setShowMyScheduleModal(false);
+    } else if (modal === "missing-attendance") {
+      setShowMissingAttendanceModal(true);
+      setShowPayslipModal(false);
+      setShowMyScheduleModal(false);
+    } else if (modal === "my-schedule") {
+      setShowMyScheduleModal(true);
+      setShowPayslipModal(false);
+      setShowMissingAttendanceModal(false);
+    }
+  }, [window.location.search]);
 
   // States của Phiếu lương
   const [payslipMonth, setPayslipMonth] = useState(() => {
@@ -184,6 +219,24 @@ export default function Home() {
       fetchNotifs();
     }
   }, [user?.MaTaiKhoan, showProfileModal, userRole]);
+
+  // Polling notifications for Home page profile bell
+  useEffect(() => {
+    if (!user?.MaTaiKhoan) return;
+    const fetchNotifs = async () => {
+      try {
+        const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
+        if (res.data.success) {
+          setNotifications(res.data.data);
+        }
+      } catch (error) {
+        console.error("Lỗi tải thông báo:", error);
+      }
+    };
+    
+    const interval = setInterval(fetchNotifs, 10000);
+    return () => clearInterval(interval);
+  }, [user?.MaTaiKhoan, user?.MaVaiTro]);
 
   // Tải thông tin lịch phân ca, ca làm tiêu chuẩn và nhân viên khi mở modal yêu cầu
   useEffect(() => {
@@ -551,13 +604,28 @@ export default function Home() {
     toast.success("Đã hủy yêu cầu bổ sung thành công.");
   };
 
-  const handleMarkNotifRead = async (id, isRequest) => {
+  const handleMarkNotifRead = async (notif) => {
     try {
-      await axios.put(`http://localhost:5000/api/notifications/${id}/read`);
-      setNotifications(prev => prev.map(n => n.MaThongBao === id ? { ...n, TrangThaiDoc: 1 } : n));
+      await axios.put(`http://localhost:5000/api/notifications/${notif.MaThongBao}/read`);
+      setNotifications(prev => prev.map(n => n.MaThongBao === notif.MaThongBao ? { ...n, TrangThaiDoc: 1 } : n));
       setShowNotifDropdown(false);
-      if (isRequest && (userRole === "1" || userRole === "2")) {
-        window.location.href = "/timekeeping"; 
+      
+      const title = (notif.TieuDe || "").toLowerCase();
+      const content = (notif.NoiDung || "").toLowerCase();
+      
+      if (notif.Loai === 'request' && (userRole === "1" || userRole === "2")) {
+        navigate("/timekeeping"); 
+      } else if (title.includes("đăng ký") || title.includes("lịch") || content.includes("đăng ký") || content.includes("lịch")) {
+        const weekMatch = content.match(/\d{4}-\d{2}-\d{2}/);
+        const targetWeek = weekMatch ? weekMatch[0] : "";
+        const isOfficial = title.includes("chính thức") || content.includes("chính thức") || title.includes("chốt lịch") || content.includes("chốt lịch");
+        const targetTab = isOfficial ? "official" : "register";
+        
+        if (targetWeek) {
+          navigate(`/scheduling?week=${targetWeek}&tab=${targetTab}`);
+        } else {
+          navigate(`/scheduling?tab=${targetTab}`);
+        }
       }
     } catch (err) {
       console.error("Lỗi khi đọc thông báo:", err);
@@ -615,7 +683,7 @@ export default function Home() {
                 notifications.map((notif) => (
                   <div 
                     key={notif.MaThongBao}
-                    onClick={() => handleMarkNotifRead(notif.MaThongBao, notif.Loai === 'request')}
+                    onClick={() => handleMarkNotifRead(notif)}
                     className={`px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-855 transition-colors cursor-pointer text-left relative flex gap-3 ${
                       notif.TrangThaiDoc === 0 ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
                     }`}
@@ -661,7 +729,6 @@ export default function Home() {
 
   const modules = [
     { to: "/employees", icon: Users, title: t("nav_employees") || "Nhân viên", description: t("desc_employees") || "Quản lý hồ sơ nhân viên", color: "bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400" },
-    { to: "/customers", icon: Star, title: t("nav_customers"), description: t("desc_customers"), color: "bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400" },
     { to: "/timekeeping", icon: CheckCircle2, title: t("nav_timekeeping") || "Chấm công", description: t("desc_timekeeping") || "Điểm danh & Quản lý giờ làm", color: "bg-cyan-100 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400" },
     { to: "/scheduling", icon: Calendar, title: t("nav_scheduling"), description: t("desc_scheduling"), color: "bg-pink-100 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400" },
     {
@@ -709,34 +776,63 @@ export default function Home() {
   ];
 
   const isAllowed = (m) => {
-    if (m.forStaffOnly) {
-      return userRole === "3";
-    }
-
-    if (m.managerOnly) {
-      return userRole === "1" || userRole === "2";
-    }
-
-    if (m.onClick) return !!userRole;
-
     // Nếu chưa đăng nhập, chỉ cho phép xem trang Login và Home
     if (!userRole) {
       return m.to === "/login" || m.to === "/";
     }
-    
-    // Nếu là Staff (3), ẩn các module quản lý
-    if (userRole === "3") {
-      const restricted = ["/employees", "/shift-management", "/logs", "/payroll"];
-      return !restricted.includes(m.to);
+
+    // Các thẻ đặc thù theo vai trò
+    if (m.forStaffOnly && userRole !== "3") return false;
+    if (m.managerOnly && userRole !== "1" && userRole !== "2") return false;
+
+    // Kiểm tra nếu là thẻ logout
+    const isLogoutCard = m.onClick === handleLogout;
+
+    // Admin (1)
+    if (userRole === "1") {
+      // Ẩn tất cả các mục đã có ở sidebar bên trái + các mục không thuộc quyền hạn
+      // Sidebar Admin có: Nhân viên (/employees), Quản lý Ca làm (/shift-management), Tính lương (/payroll), Lịch sử hệ thống (/logs), logout
+      const restricted = [
+        "/login", 
+        "/employees", 
+        "/shift-management", 
+        "/payroll", 
+        "/logs", 
+        "/my-timesheet", 
+        "/employee-timesheet", 
+        "/scheduling"
+      ];
+      if (restricted.includes(m.to) || isLogoutCard) return false;
+      return true;
     }
     
-    // Nếu là Manager (2), ẩn logs, ẩn tính lương và ẩn Login Portal
+    // Quản lý (2)
     if (userRole === "2") {
-      return m.to !== "/logs" && m.to !== "/payroll" && m.to !== "/login";
+      // Ẩn tất cả các mục đã có ở sidebar bên trái + các mục không thuộc quyền hạn
+      // Sidebar Quản lý có: Nhân viên (/employees), Bảng đăng ký ca làm (/scheduling), Quản lý Ca làm (/shift-management), Bảng công nhân viên (/employee-timesheet), Bảng công của tôi (/my-timesheet), logout
+      const restricted = [
+        "/login", 
+        "/employees", 
+        "/scheduling", 
+        "/shift-management", 
+        "/employee-timesheet", 
+        "/my-timesheet",
+        "/logs",
+        "/payroll"
+      ];
+      if (restricted.includes(m.to) || isLogoutCard) return false;
+      return true;
     }
-    
-    // Admin (1) xem được tất cả trừ nút Login Portal
-    return m.to !== "/login";
+
+    // Nhân viên (3)
+    if (userRole === "3") {
+      const allowedPaths = ["/timekeeping", "/scheduling"];
+      if (m.to && allowedPaths.includes(m.to)) return true;
+      if (m.title === "Lịch Làm Việc") return true;
+      return false;
+    }
+
+    return true;
   };
 
   const filteredModules = modules.filter(isAllowed);
@@ -971,60 +1067,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* Modules Grid Section */}
-        <div className="space-y-6">
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>{t("modules_title")}</span>
-          </h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {filteredModules.map((module, i) => {
-              const Icon = module.icon;
-              const cardContent = (
-                <>
-                  <div className={`w-12 h-12 rounded-xl ${module.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-500 transition-colors mb-1">
-                      {module.title}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
-                      {module.description}
-                    </p>
-                  </div>
-                </>
-              );
-
-              const cardClass = "bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-850 rounded-2xl shadow-md p-6 hover:shadow-xl transition-all group hover:-translate-y-1.5 flex flex-col justify-between h-44 cursor-pointer text-left w-full";
-
-              return (
-                <motion.div
-                  key={module.to || module.title || 'logout'}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05, duration: 0.4 }}
-                >
-                  {module.onClick ? (
-                    <button
-                      onClick={module.onClick}
-                      className={cardClass}
-                    >
-                      {cardContent}
-                    </button>
-                  ) : (
-                    <Link
-                      to={module.to}
-                      className={cardClass}
-                    >
-                      {cardContent}
-                    </Link>
-                  )}
-                </motion.div>
-              );
-            })}
+        {/* Hiển thị bảng lịch làm việc ở giữa trang chủ cho Quản lý (2) và Nhân viên (3) */}
+        {(userRole === "2" || userRole === "3") && (
+          <div className="mt-8">
+            <ShiftScheduling />
           </div>
-        </div>
+        )}
+
       </div>
 
       <AnimatePresence>
@@ -1049,7 +1098,7 @@ export default function Home() {
               </div>
               
               <button 
-                onClick={() => setShowPayslipModal(false)}
+                onClick={handleClosePayslip}
                 className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-850 hover:bg-slate-200 dark:hover:bg-zinc-800 flex items-center justify-center text-slate-500 dark:text-zinc-400 transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -1230,7 +1279,7 @@ export default function Home() {
                 </div>
               </div>
               <button 
-                onClick={() => { setShowMyScheduleModal(false); setSelectedMyShift(null); }}
+                onClick={handleCloseMySchedule}
                 className="w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-850 hover:bg-slate-200 dark:hover:bg-zinc-800 flex items-center justify-center text-slate-500 dark:text-zinc-400 transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -1296,8 +1345,7 @@ export default function Home() {
                         setMissingDate(selectedMyShift.NgayLam.split('T')[0]);
                         setMissingShift(`${selectedMyShift.TenCaLam} (${selectedMyShift.GioBatDau} - ${selectedMyShift.GioKetThuc})`);
                         setRequestCategory('xinnghi');
-                        setShowMissingAttendanceModal(true);
-                        setShowMyScheduleModal(false);
+                        navigate('/?modal=missing-attendance', { replace: true });
                         setSelectedMyShift(null);
                       }}
                       className="w-full flex items-center justify-between p-4 rounded-xl border border-rose-200 dark:border-rose-900/30 bg-rose-50 dark:bg-rose-900/10 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors group"
@@ -1319,8 +1367,7 @@ export default function Home() {
                         setMissingDate(selectedMyShift.NgayLam.split('T')[0]);
                         setMissingShift(`${selectedMyShift.TenCaLam} (${selectedMyShift.GioBatDau} - ${selectedMyShift.GioKetThuc})`);
                         setRequestCategory('doica');
-                        setShowMissingAttendanceModal(true);
-                        setShowMyScheduleModal(false);
+                        navigate('/?modal=missing-attendance', { replace: true });
                         setSelectedMyShift(null);
                       }}
                       className="w-full flex items-center justify-between p-4 rounded-xl border border-amber-200 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors group"
@@ -1407,7 +1454,7 @@ export default function Home() {
                     <p className="text-xs text-slate-500 dark:text-zinc-400">Nghỉ phép, đổi ca, bổ sung công</p>
                   </div>
                 </div>
-                <button onClick={() => setShowMissingAttendanceModal(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+                <button onClick={handleCloseMissingAttendance} className="md:hidden text-slate-400 hover:text-slate-600">
                   <X className="w-6 h-6" />
                 </button>
               </div>
@@ -1725,7 +1772,7 @@ export default function Home() {
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black text-slate-700 dark:text-zinc-300 uppercase tracking-wider">Yêu cầu gần đây</h4>
                   <button 
-                    onClick={() => setShowMissingAttendanceModal(false)}
+                    onClick={handleCloseMissingAttendance}
                     className="md:hidden w-8 h-8 rounded-full bg-slate-100 dark:bg-zinc-850 flex items-center justify-center text-slate-500 dark:text-zinc-400"
                   >
                     <X className="w-4 h-4" />
@@ -1776,8 +1823,8 @@ export default function Home() {
 
               {/* Close button for desktop layout */}
               <button
-                onClick={() => setShowMissingAttendanceModal(false)}
-                className="hidden md:block w-full py-2 bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl hover:bg-slate-350 transition-colors mt-6"
+                onClick={handleCloseMissingAttendance}
+                className="hidden md:block w-full py-2 bg-slate-200 dark:bg-zinc-850 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl hover:bg-slate-350 transition-colors mt-6"
               >
                 Đóng cửa sổ
               </button>

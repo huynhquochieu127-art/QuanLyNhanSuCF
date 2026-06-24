@@ -160,7 +160,7 @@ const getRequests = async (req, res) => {
   }
 };
 
-// Gửi yêu cầu bổ sung điểm danh
+// Gửi yêu cầu bổ sung điểm danh hoặc xin nghỉ phép
 const submitRequest = async (req, res) => {
   try {
     const { MaNhanVien, Ngay, CaLam, Loai, ThoiGian, LyDo } = req.body;
@@ -168,11 +168,24 @@ const submitRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
     }
 
+    // 1. Chèn yêu cầu vào yeucau_chamcong (để nhân viên quản lý ở tab cá nhân)
     const query = `
       INSERT INTO yeucau_chamcong (MaNhanVien, Ngay, CaLam, Loai, ThoiGian, LyDo, TrangThai)
       VALUES (?, ?, ?, ?, ?, ?, 'pending')
     `;
     const [result] = await db.query(query, [MaNhanVien, Ngay, CaLam, Loai, ThoiGian, LyDo]);
+
+    // 2. Nếu là yêu cầu nghỉ phép, đồng thời chèn vào don_xin_nghi ở trạng thái pending
+    const typeLower = Loai.toLowerCase();
+    if (typeLower.includes('nghỉ')) {
+      const loaiNghi = typeLower.includes('ốm') ? 'om' : typeLower.includes('việc riêng') ? 'viec_rieng' : 'phep';
+      const cleanDate = new Date(Ngay).toISOString().split('T')[0];
+      await db.query(
+        `INSERT INTO don_xin_nghi (MaNhanVien, NgayNghi, NgayNghiDen, LyDo, LoaiNghi, TrangThai)
+         VALUES (?, ?, ?, ?, ?, 'pending')`,
+        [MaNhanVien, cleanDate, cleanDate, LyDo || 'Xin nghỉ', loaiNghi]
+      );
+    }
 
     // Lấy tên nhân viên để hiển thị trong thông báo
     const [empRows] = await db.query('SELECT HoTen FROM nhanvien WHERE MaNhanVien = ?', [MaNhanVien]);
@@ -181,7 +194,6 @@ const submitRequest = async (req, res) => {
     const cleanDate = new Date(Ngay).toLocaleDateString('vi-VN');
 
     // Phân loại thông báo người nhận
-    const typeLower = Loai.toLowerCase();
     if (typeLower.includes('full-time') || typeLower.includes('fulltime') || typeLower.includes('chuyển full')) {
       // Chỉ gửi cho Admin (MaVaiTro = 1)
       await db.query(
@@ -462,6 +474,121 @@ const formatTime = (timeVal) => {
   return String(timeVal);
 };
 
+// Lấy danh sách đơn xin nghỉ phép từ bảng don_xin_nghi
+const getLeaveRequests = async (req, res) => {
+  try {
+    const { employeeId } = req.query;
+    let query = `
+      SELECT d.*, t.HoTen as EmployeeName 
+      FROM don_xin_nghi d
+      LEFT JOIN taikhoan t ON d.MaNhanVien = t.MaTaiKhoan
+      ORDER BY d.NgayTao DESC
+    `;
+    let params = [];
+
+    if (employeeId) {
+      query = `
+        SELECT d.*, t.HoTen as EmployeeName 
+        FROM don_xin_nghi d
+        LEFT JOIN taikhoan t ON d.MaNhanVien = t.MaTaiKhoan
+        WHERE d.MaNhanVien = ?
+        ORDER BY d.NgayTao DESC
+      `;
+      params = [employeeId];
+    }
+
+    const [rows] = await db.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách đơn nghỉ:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
+// Cập nhật trạng thái đơn nghỉ phép (Duyệt / Từ chối)
+const updateLeaveRequestStatus = async (req, res) => {
+  try {
+    const { id } = req.params; // MaDon
+    const { status } = req.body; // 'approved' or 'rejected'
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' });
+    }
+
+    // 1. Lấy thông tin đơn nghỉ
+    const [leaveRows] = await db.query('SELECT * FROM don_xin_nghi WHERE MaDon = ?', [id]);
+    if (leaveRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đơn nghỉ' });
+    }
+    const leaveReq = leaveRows[0];
+
+    // 2. Cập nhật trạng thái don_xin_nghi
+    await db.query('UPDATE don_xin_nghi SET TrangThai = ?, GhiChuQL = ? WHERE MaDon = ?', [status, '', id]);
+
+    // 3. Đồng bộ hóa sang yeucau_chamcong
+    const cleanDate = new Date(leaveReq.NgayNghi).toISOString().split('T')[0];
+    const [ycRows] = await db.query(
+      `SELECT MaYeuCau FROM yeucau_chamcong 
+       WHERE MaNhanVien = ? AND CAST(Ngay AS DATE) = ? AND Loai LIKE '%nghỉ%' AND TrangThai = 'pending'`,
+      [leaveReq.MaNhanVien, cleanDate]
+    );
+
+    if (ycRows.length > 0) {
+      const ycId = ycRows[0].MaYeuCau;
+      await db.query('UPDATE yeucau_chamcong SET TrangThai = ? WHERE MaYeuCau = ?', [status, ycId]);
+
+      // Áp dụng các thay đổi phụ trợ nếu được duyệt
+      if (status === 'approved') {
+        // Kiểm tra xem là xin nghỉ việc hay nghỉ ca
+        const [ycDetail] = await db.query('SELECT Loai FROM yeucau_chamcong WHERE MaYeuCau = ?', [ycId]);
+        const isNghiViec = ycDetail.length > 0 && ycDetail[0].Loai.toLowerCase().includes('việc');
+
+        if (isNghiViec) {
+          await db.query("UPDATE nhanvien SET TrangThai = N'Đã nghỉ việc' WHERE MaNhanVien = ?", [leaveReq.MaNhanVien]);
+          await db.query(
+            "UPDATE taikhoan SET TrangThaiHoatDong = 0 WHERE MaTaiKhoan = (SELECT MaTaiKhoan FROM nhanvien WHERE MaNhanVien = ?)",
+            [leaveReq.MaNhanVien]
+          );
+        } else {
+          // Xin nghỉ ca: chuyển ca làm ngày hôm đó của nhân viên thành trạng thái Nghỉ trong phancanhanvien
+          const [ycFull] = await db.query('SELECT CaLam FROM yeucau_chamcong WHERE MaYeuCau = ?', [ycId]);
+          const caLamLower = ycFull.length > 0 && ycFull[0].CaLam ? ycFull[0].CaLam.toLowerCase() : '';
+          
+          let maCaLam = null;
+          const [shifts] = await db.query('SELECT MaCaLam, TenCaLam FROM calam');
+          for (const s of shifts) {
+            if (caLamLower.includes(s.TenCaLam.toLowerCase())) {
+              maCaLam = s.MaCaLam;
+              break;
+            }
+          }
+          if (maCaLam) {
+            await db.query(
+              "UPDATE phancanhanvien SET TrangThai = N'Nghỉ' WHERE MaNhanVien = ? AND NgayLam = ? AND MaCaLam = ?",
+              [leaveReq.MaNhanVien, cleanDate, maCaLam]
+            );
+          }
+        }
+      }
+    }
+
+    // 4. Gửi thông báo phản hồi cho nhân viên
+    const cleanDateStr = new Date(leaveReq.NgayNghi).toLocaleDateString('vi-VN');
+    const resultText = status === 'approved' ? 'ĐƯỢC DUYỆT' : 'BỊ TỪ CHỐI';
+    const notifyTitle = `Kết quả duyệt đơn nghỉ`;
+    const notifyContent = `Đơn xin nghỉ ngày ${cleanDateStr} của bạn đã ${resultText.toLowerCase()}.`;
+    await db.query(
+      'INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaTaiKhoan, MaVaiTro) VALUES (?, ?, ?, ?, NULL)',
+      [notifyTitle, notifyContent, 'approval', leaveReq.MaNhanVien]
+    );
+
+    res.json({ success: true, message: 'Đã cập nhật trạng thái đơn nghỉ' });
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái đơn nghỉ:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
 module.exports = {
   getAttendanceHistory,
   checkIn,
@@ -470,5 +597,7 @@ module.exports = {
   submitRequest,
   getRequests,
   updateRequestStatus,
-  getScheduledShifts
+  getScheduledShifts,
+  getLeaveRequests,
+  updateLeaveRequestStatus
 };

@@ -11,7 +11,7 @@ async function createChucVuTable() {
       )
     `;
     await db.query(createTableQuery);
-     
+     //
     console.log('Inserting default positions...');
     const positions = ['Thu ngân', 'Phục vụ', 'Pha chế', 'Quản lý'];
     for (const pos of positions) {

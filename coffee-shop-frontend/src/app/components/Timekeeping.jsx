@@ -37,7 +37,7 @@ export default function Timekeeping() {
         setAttendanceHistory(res.data.data);
         
         // Kiểm tra xem hôm nay đã check-in chưa
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
         const todayRecord = res.data.data.find(r => r.NgayLam && r.NgayLam.startsWith(todayStr));
         
         if (todayRecord) {
@@ -415,9 +415,9 @@ export default function Timekeeping() {
                     <tr><td colSpan="6" className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu</td></tr>
                   ) : (
                     allAttendance.map((record, index) => {
-                      // Logic tính đi trễ (Giả sử ca chuẩn là 08:00)
+                      // Logic tính đi trễ dựa theo giá trị DiTre từ DB
                       const checkInTime = new Date(record.GioCheckIn);
-                      const isLate = checkInTime.getHours() > 8 || (checkInTime.getHours() === 8 && checkInTime.getMinutes() > 15);
+                      const isLate = record.DiTre > 0;
 
                       return (
                         <tr key={index} className="border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">

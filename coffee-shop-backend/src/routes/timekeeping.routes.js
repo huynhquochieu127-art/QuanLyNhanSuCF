@@ -12,5 +12,6 @@ router.put('/request/:id/status', timekeepingController.updateRequestStatus);
 router.get('/leave', timekeepingController.getLeaveRequests);
 router.put('/leave/:id/status', timekeepingController.updateLeaveRequestStatus);
 router.get('/scheduled-shifts', timekeepingController.getScheduledShifts);
+router.delete('/request/:id', timekeepingController.deleteRequest);
 
 module.exports = router;

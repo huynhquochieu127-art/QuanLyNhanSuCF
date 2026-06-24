@@ -79,21 +79,33 @@ const calculatePayroll = async (req, res) => {
         const daysWorked = parseFloat(bc.SoCong || 0);
         const totalHours = parseFloat(bc.SoGioLam || 0);
 
+        // Lấy số ngày nghỉ phép có hưởng lương (loại 'phep') được duyệt
+        const [paidLeaveRes] = await db.query(
+          `SELECT COUNT(*) as paidLeaves 
+           FROM don_xin_nghi 
+           WHERE MaNhanVien = ? AND MONTH(NgayNghi) = ? AND YEAR(NgayNghi) = ? AND TrangThai = 'approved' AND LoaiNghi = 'phep'`,
+          [bc.MaNhanVien, m, y]
+        );
+        const paidLeaves = parseInt(paidLeaveRes[0].paidLeaves || 0, 10);
+        const paidDays = daysWorked + paidLeaves;
+
         let overtimeHours = totalHours - (daysWorked * 8);
         if (overtimeHours < 0) overtimeHours = 0;
         overtimeHours = Math.round(overtimeHours * 10) / 10;
 
         const dailyRate = baseSalary / 26;
-        const actualWorkPay = Math.round(dailyRate * daysWorked);
+        const actualWorkPay = Math.round(dailyRate * paidDays);
         const otRate = (baseSalary / 26 / 8) * 1.5;
         const otPay = Math.round(otRate * overtimeHours);
 
         const lunchAllowance = daysWorked * 35000;
-        const bonusChuyenCan = daysWorked >= 24 ? 500000 : 200000;
+        const bonusChuyenCan = daysWorked >= 24 ? 500000 : (daysWorked > 0 ? 200000 : 0);
         const bhxh = Math.round(baseSalary * 0.08);
 
         const totalIncome = actualWorkPay + otPay + lunchAllowance + bonusChuyenCan;
-        const totalDeductions = bhxh + (totalIncome > 11000000 ? Math.round((totalIncome - 11000000) * 0.05) : 0);
+        const taxableIncome = totalIncome - bhxh;
+        const pit = taxableIncome > 11000000 ? Math.round((taxableIncome - 11000000) * 0.05) : 0;
+        const totalDeductions = bhxh + pit;
         
         netSalary = totalIncome - totalDeductions;
         khauTru = totalDeductions;
@@ -236,8 +248,17 @@ const getPayslip = async (req, res) => {
       if (roleId === 1) baseSalary = 15000000;
       else if (roleId === 2) baseSalary = 10000000;
       
+      const [paidLeaveRes] = await db.query(
+        `SELECT COUNT(*) as paidLeaves 
+         FROM don_xin_nghi 
+         WHERE MaNhanVien = ? AND MONTH(NgayNghi) = ? AND YEAR(NgayNghi) = ? AND TrangThai = 'approved' AND LoaiNghi = 'phep'`,
+        [realMaNhanVien, m, y]
+      );
+      const paidLeaves = parseInt(paidLeaveRes[0].paidLeaves || 0, 10);
+      const paidDays = daysWorked + paidLeaves;
+      
       const dailyRate = baseSalary / 26;
-      actualWorkPay = Math.round(dailyRate * daysWorked);
+      actualWorkPay = Math.round(dailyRate * paidDays);
       
       let overtimeHours = totalHours - (daysWorked * 8);
       if (overtimeHours < 0) overtimeHours = 0;
@@ -246,7 +267,7 @@ const getPayslip = async (req, res) => {
       otPay = Math.round(otRate * overtimeHours);
 
       lunchAllowance = daysWorked * 35000;
-      bonusChuyenCan = daysWorked >= 24 ? 500000 : 200000;
+      bonusChuyenCan = daysWorked >= 24 ? 500000 : (daysWorked > 0 ? 200000 : 0);
       bhxh = Math.round(baseSalary * 0.08);
 
       totalIncome = actualWorkPay + otPay + lunchAllowance + bonusChuyenCan;

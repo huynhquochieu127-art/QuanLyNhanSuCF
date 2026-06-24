@@ -30,7 +30,7 @@ export default function Home() {
     month: "2-digit",
     year: "numeric"
   });
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = today.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 
   // State quản lý chấm công ngày hôm nay
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -157,7 +157,7 @@ export default function Home() {
           if (reqRes.data.success) {
             setAttendanceRequests(reqRes.data.data.map(r => ({
               id: `RQ-${r.MaYeuCau}`,
-              date: new Date(r.Ngay).toISOString().split('T')[0],
+              date: new Date(r.Ngay).toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
               shift: r.CaLam || "N/A",
               type: r.Loai,
               time: r.ThoiGian,
@@ -277,10 +277,8 @@ export default function Home() {
             setUserSchedules(res.data.data);
             if (res.data.data.length > 0) {
               setSelectedSourceShift(res.data.data[0].MaCaLam);
-              setIsOutsideShift(false);
             } else {
               setSelectedSourceShift("");
-              setIsOutsideShift(true);
             }
           }
         })
@@ -312,21 +310,13 @@ export default function Home() {
   // Tự động điền giờ check-in / check-out khi chọn ca bổ sung công
   useEffect(() => {
     if (requestCategory === "bosung" && showMissingAttendanceModal) {
-      if (isOutsideShift) {
-        const selectedShiftObj = standardShifts.find(s => String(s.MaCaLam) === String(missingShift));
-        if (selectedShiftObj) {
-          setMissingTimeIn(selectedShiftObj.GioBatDau);
-          setMissingTimeOut(selectedShiftObj.GioKetThuc);
-        }
-      } else {
-        const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
-        if (selectedShiftObj) {
-          setMissingTimeIn(selectedShiftObj.GioBatDau);
-          setMissingTimeOut(selectedShiftObj.GioKetThuc);
-        }
+      const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+      if (selectedShiftObj) {
+        setMissingTimeIn(selectedShiftObj.GioBatDau);
+        setMissingTimeOut(selectedShiftObj.GioKetThuc);
       }
     }
-  }, [requestCategory, selectedSourceShift, isOutsideShift, missingShift, userSchedules, standardShifts, showMissingAttendanceModal]);
+  }, [requestCategory, selectedSourceShift, userSchedules, showMissingAttendanceModal]);
 
   // Bộ đếm thời gian đếm ngược (đếm số giờ đã làm)
   useEffect(() => {
@@ -408,8 +398,8 @@ export default function Home() {
           mon.setDate(now.getDate() - day + 1);
           const sun = new Date(mon);
           sun.setDate(mon.getDate() + 6);
-          const startStr = mon.toISOString().split('T')[0];
-          const endStr = sun.toISOString().split('T')[0];
+          const startStr = mon.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+          const endStr = sun.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 
           const res = await axios.get(`http://localhost:5000/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
           if (res.data.success) {
@@ -482,13 +472,18 @@ export default function Home() {
       let caText = "";
       
       if (requestCategory === 'bosung') {
-        if (isOutsideShift) {
-          const selectedShiftObj = standardShifts.find(s => String(s.MaCaLam) === String(missingShift));
-          caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "Ca Ngoài";
-        } else {
-          const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
-          caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "N/A";
+        if (userSchedules.length === 0) {
+          toast.error("Bạn không có lịch làm việc trong ngày này để bổ sung");
+          setSubmitting(false);
+          return;
         }
+        if (missingType === 'both' && missingTimeIn >= missingTimeOut) {
+          toast.error("Giờ check-in phải nhỏ hơn giờ check-out");
+          setSubmitting(false);
+          return;
+        }
+        const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+        caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "N/A";
         typeText = `Bổ sung: ${missingType === 'both' ? 'Cả In/Out' : (missingType === 'checkin' ? 'Check-in' : 'Check-out')}`;
         timeText = missingType === 'both' ? `${missingTimeIn} - ${missingTimeOut}` : (missingType === 'checkin' ? missingTimeIn : missingTimeOut);
       } else if (requestCategory === 'xinnghi') {
@@ -597,11 +592,21 @@ export default function Home() {
     }
   };
 
-  const handleDeleteRequest = (id) => {
-    const updated = attendanceRequests.filter(r => r.id !== id);
-    setAttendanceRequests(updated);
-    localStorage.setItem(`attendance_requests_${user?.MaTaiKhoan}`, JSON.stringify(updated));
-    toast.success("Đã hủy yêu cầu bổ sung thành công.");
+  const handleDeleteRequest = async (id) => {
+    try {
+      const numericId = id.replace('RQ-', '');
+      const res = await axios.delete(`http://localhost:5000/api/timekeeping/request/${numericId}`);
+      if (res.data.success) {
+        const updated = attendanceRequests.filter(r => r.id !== id);
+        setAttendanceRequests(updated);
+        toast.success("Đã hủy yêu cầu bổ sung thành công.");
+      } else {
+        toast.error(res.data.message || "Không thể hủy yêu cầu");
+      }
+    } catch (error) {
+      console.error("Lỗi khi hủy yêu cầu:", error);
+      toast.error(error.response?.data?.message || "Lỗi khi hủy yêu cầu");
+    }
   };
 
   const handleMarkNotifRead = async (notif) => {
@@ -656,13 +661,12 @@ export default function Home() {
                 <button 
                   onClick={async () => {
                     try {
-                      for (const notif of notifications) {
-                        if (notif.TrangThaiDoc === 0) {
-                          await axios.put(`http://localhost:5000/api/notifications/${notif.MaThongBao}/read`);
-                        }
+                      const unreadIds = notifications.filter(n => n.TrangThaiDoc === 0).map(n => n.MaThongBao);
+                      if (unreadIds.length > 0) {
+                        await axios.put(`http://localhost:5000/api/notifications/read-all`, { notificationIds: unreadIds });
+                        setNotifications(prev => prev.map(n => ({ ...n, TrangThaiDoc: 1 })));
+                        toast.success("Đã đọc tất cả thông báo");
                       }
-                      setNotifications(prev => prev.map(n => ({ ...n, TrangThaiDoc: 1 })));
-                      toast.success("Đã đọc tất cả thông báo");
                     } catch (err) {
                       console.error(err);
                     }
@@ -1523,49 +1527,14 @@ export default function Home() {
                         </select>
                       </div>
                     ) : (
-                      requestCategory !== 'bosung' && (
-                        <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl">
-                          Bạn không có lịch làm việc trong ngày này. Vui lòng chọn ngày khác hoặc liên hệ Quản lý.
-                        </div>
-                      )
+                      <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl">
+                        Bạn không có lịch làm việc trong ngày này. Vui lòng chọn ngày khác hoặc liên hệ Quản lý.
+                      </div>
                     )}
 
-                    {/* Bổ sung công: Cho phép chọn ca ngoài lịch */}
-                    {requestCategory === 'bosung' && (
+                    {/* Bổ sung công: Chỉ cho phép bổ sung thông tin check-in / check-out */}
+                    {requestCategory === 'bosung' && userSchedules.length > 0 && (
                       <div className="space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <input 
-                            type="checkbox" 
-                            id="outsideShiftCheck"
-                            checked={isOutsideShift || userSchedules.length === 0}
-                            disabled={userSchedules.length === 0}
-                            onChange={(e) => setIsOutsideShift(e.target.checked)}
-                            className="rounded border-slate-350 text-amber-500 focus:ring-amber-500 w-4 h-4"
-                          />
-                          <label htmlFor="outsideShiftCheck" className="text-xs font-bold text-slate-650 dark:text-zinc-300 select-none">
-                            Làm ca ngoài lịch (Tăng ca / Hỗ trợ)
-                          </label>
-                        </div>
-
-                        {(isOutsideShift || userSchedules.length === 0) && (
-                          <div>
-                            <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">
-                              Chọn ca làm việc tiêu chuẩn
-                            </label>
-                            <select 
-                              value={missingShift}
-                              onChange={(e) => setMissingShift(e.target.value)}
-                              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            >
-                              {standardShifts.map(s => (
-                                <option key={s.MaCaLam} value={s.MaCaLam}>
-                                  {s.TenCaLam} ({s.GioBatDau} - {s.GioKetThuc})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
                         {/* Điền thông tin check-in / check-out */}
                         <div>
                           <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Thông tin bổ sung</label>
@@ -1757,7 +1726,7 @@ export default function Home() {
                 {/* Submit button */}
                 <button
                   type="submit"
-                  disabled={submitting || ((requestCategory === 'xinnghi' || requestCategory === 'doica') && userSchedules.length === 0)}
+                  disabled={submitting || ((requestCategory === 'xinnghi' || requestCategory === 'doica' || requestCategory === 'bosung') && userSchedules.length === 0)}
                   className="w-full py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg mt-4"
                 >
                   <Send className="w-4 h-4" />

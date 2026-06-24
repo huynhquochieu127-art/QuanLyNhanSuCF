@@ -54,12 +54,12 @@ const createShift = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Tạo ca làm thành công',
-      data: { 
-        MaCaLam: result.insertId, 
-        TenCaLam, 
-        GioBatDau: formatTime(GioBatDau), 
-        GioKetThuc: formatTime(GioKetThuc), 
-        MoTa 
+      data: {
+        MaCaLam: result.insertId,
+        TenCaLam,
+        GioBatDau: formatTime(GioBatDau),
+        GioKetThuc: formatTime(GioKetThuc),
+        MoTa
       }
     });
   } catch (error) {
@@ -237,7 +237,7 @@ const registerShift = async (req, res) => {
       const [caRows] = await db.query('SELECT TenCaLam FROM calam WHERE MaCaLam = ?', [MaCaLam]);
       const caName = caRows[0]?.TenCaLam || '';
       const formattedDate = new Date(NgayLam).toLocaleDateString('vi-VN');
-      
+
       await db.query(
         'INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaVaiTro) VALUES (?, ?, ?, 2)',
         ['Yêu cầu đăng ký ca mới', `${empName} đã đăng ký ca làm mới: ${caName} ngày ${formattedDate}.`, 'info']
@@ -259,7 +259,7 @@ const cancelRegistration = async (req, res) => {
     const { id } = req.params;
     const [check] = await db.query('SELECT * FROM dangky_ca WHERE MaDangKy = ?', [id]);
     if (check.length === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy đăng ký' });
-    
+
     if (check[0].TrangThai !== 'pending') {
       // Tính toán ngày thứ Hai đầu tuần của ngày làm việc
       const dateVal = new Date(check[0].NgayLam);
@@ -273,13 +273,13 @@ const cancelRegistration = async (req, res) => {
       const weekStatus = weekStatusRows[0]?.TrangThai;
 
       if (weekStatus !== 'reopened') {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Chỉ có thể hủy đăng ký đang chờ duyệt hoặc khi tuần được mở lại đăng ký' 
+        return res.status(400).json({
+          success: false,
+          message: 'Chỉ có thể hủy đăng ký đang chờ duyệt hoặc khi tuần được mở lại đăng ký'
         });
       }
     }
-    
+
     await db.query('DELETE FROM dangky_ca WHERE MaDangKy = ?', [id]);
     res.json({ success: true, message: 'Đã hủy đăng ký ca' });
   } catch (error) {
@@ -296,7 +296,7 @@ const updateRegistrationStatus = async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ: ' + status });
     }
-    
+
     // Lấy thông tin đăng ký để tạo thông báo trước khi update hoặc sau
     const [regRows] = await db.query(
       `SELECT r.MaNhanVien, r.NgayLam, c.TenCaLam 
@@ -315,11 +315,11 @@ const updateRegistrationStatus = async (req, res) => {
         const formattedDate = new Date(reg.NgayLam).toLocaleDateString('vi-VN');
         const statusText = status === 'approved' ? 'duyệt' : 'từ chối';
         const type = status === 'approved' ? 'success' : 'warning';
-        
+
         await db.query(
           'INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaTaiKhoan) VALUES (?, ?, ?, ?)',
           [
-            'Kết quả duyệt đăng ký ca', 
+            'Kết quả duyệt đăng ký ca',
             `Đăng ký ca làm ${reg.TenCaLam} ngày ${formattedDate} của bạn đã được Quản lý ${statusText}.`,
             type,
             reg.MaNhanVien
@@ -354,7 +354,7 @@ const updateSetting = async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key) return res.status(400).json({ success: false, message: 'Thiếu key' });
-    
+
     const [existing] = await db.query('SELECT * FROM cauhinh WHERE Khoa = ?', [key]);
     if (existing.length > 0) {
       await db.query('UPDATE cauhinh SET GiaTri = ? WHERE Khoa = ?', [value, key]);
@@ -375,7 +375,7 @@ const getWeekStatus = async (req, res) => {
   try {
     const { week } = req.params;
     if (!week) return res.status(400).json({ success: false, message: 'Thiếu mã tuần' });
-    
+
     const [rows] = await db.query('SELECT * FROM trangthai_tuan WHERE MaTuan = ?', [week]);
     if (rows.length === 0) {
       // Mặc định là pending (chưa mở đăng ký)
@@ -404,13 +404,13 @@ const updateWeekStatus = async (req, res) => {
       const startDate = new Date(week);
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 6);
-      
+
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
-      
+
       // Xóa các phân ca trong tuần đó khi mở lại đăng ký
       await db.query('DELETE FROM phancanhanvien WHERE NgayLam >= ? AND NgayLam <= ?', [startStr, endStr]);
-      
+
       thongBao = `Quản lý đã mở lại cổng đăng ký lịch làm việc cho tuần ${week}. Nhân viên có thể thực hiện đăng ký và thay đổi ca làm.`;
     }
 
@@ -451,7 +451,7 @@ const finalizeWeek = async (req, res) => {
     const startDate = new Date(week);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 6);
-    
+
     // Format YYYY-MM-DD
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];

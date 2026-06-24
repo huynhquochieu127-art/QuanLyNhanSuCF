@@ -88,7 +88,7 @@ const getTimesheets = async (req, res) => {
 async function autoGenerateTimesheet(maNhanVien, month, year) {
   // 1. Tính tổng số giờ làm và số ngày làm thực tế từ bảng chamcong
   const [attRes] = await db.query(
-    `SELECT SUM(SoGioLam) as totalHours, COUNT(*) as daysWorked 
+    `SELECT SUM(SoGioLam) as totalHours, COUNT(DISTINCT NgayLam) as daysWorked 
      FROM chamcong 
      WHERE MaNhanVien = ? AND MONTH(NgayLam) = ? AND YEAR(NgayLam) = ? AND GioCheckOut IS NOT NULL`,
     [maNhanVien, month, year]
@@ -156,6 +156,28 @@ const updateTimesheet = async (req, res) => {
   try {
     const { id } = req.params;
     const { SoCong, SoGioLam, SoNgayNghi, SoNgayTre, GhiChuQL } = req.body;
+    
+    // Lấy thông tin tháng, năm và nhân viên của bảng công này
+    const [bcRows] = await db.query(
+      'SELECT MaNhanVien, Thang, Nam FROM bangcong_thang WHERE MaBangCong = ?',
+      [id]
+    );
+    
+    if (bcRows.length > 0) {
+      const { MaNhanVien, Thang, Nam } = bcRows[0];
+      // Kiểm tra xem bảng lương đã được duyệt (chốt) chưa
+      const [blRows] = await db.query(
+        "SELECT * FROM bangluong WHERE MaNhanVien = ? AND Thang = ? AND Nam = ? AND TrangThai = 'approved'",
+        [MaNhanVien, Thang, Nam]
+      );
+      if (blRows.length > 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Bảng công đã được chốt và duyệt lương, không thể chỉnh sửa!' 
+        });
+      }
+    }
+
     await db.query(
       `UPDATE bangcong_thang SET SoCong=?, SoGioLam=?, SoNgayNghi=?, SoNgayTre=?, GhiChuQL=? WHERE MaBangCong=?`,
       [SoCong, SoGioLam, SoNgayNghi, SoNgayTre, GhiChuQL || '', id]
@@ -186,10 +208,10 @@ const sendToEmployee = async (req, res) => {
       [maBangCong]
     );
     if (bcRows.length > 0) {
-      const { Thang, Nam } = bcRows[0];
+      const { Thang, Nam, MaNhanVien } = bcRows[0];
       await db.query(
-        "INSERT INTO thongbao (TieuDe, NoiDung, Loai, NgayTao) VALUES (?, ?, 'info', NOW())",
-        ['Bảng công tháng cần xác nhận', `Quản lý đã gửi bảng công Tháng ${Thang}/${Nam} cho nhân viên kiểm tra.`]
+        "INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaTaiKhoan, MaVaiTro, NgayTao) VALUES (?, ?, 'info', ?, NULL, NOW())",
+        ['Bảng công tháng cần xác nhận', `Quản lý đã gửi bảng công Tháng ${Thang}/${Nam} cho bạn kiểm tra.`, MaNhanVien]
       );
     }
 

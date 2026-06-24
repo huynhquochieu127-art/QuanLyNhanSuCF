@@ -31,6 +31,23 @@ exports.markAsRead = async (req, res) => {
   }
 };
 
+exports.markAllAsRead = async (req, res) => {
+  try {
+    const { notificationIds } = req.body;
+    if (!notificationIds || !Array.isArray(notificationIds) || notificationIds.length === 0) {
+       return res.json({ success: true, message: 'Không có thông báo nào cần đánh dấu' });
+    }
+    
+    const placeholders = notificationIds.map(() => '?').join(',');
+    await db.query(`UPDATE thongbao SET TrangThaiDoc = 1 WHERE MaThongBao IN (${placeholders})`, notificationIds);
+    
+    res.json({ success: true, message: 'Đã đánh dấu đã đọc tất cả' });
+  } catch (error) {
+    console.error('Lỗi đánh dấu đã đọc tất cả:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
 exports.createNotification = async (req, res) => {
   try {
     const { TieuDe, NoiDung, Loai, MaTaiKhoan, MaVaiTro } = req.body;

@@ -38,6 +38,11 @@ const login = async (req, res) => {
 
     const user = users[0];
 
+    // Kiểm tra tài khoản có bị khóa/ngừng hoạt động không
+    if (user.TrangThaiHoatDong !== 1) {
+      return res.status(403).json({ success: false, message: 'Tài khoản đã bị khóa hoặc ngừng hoạt động' });
+    }
+
     // Kiểm tra mật khẩu
     // Bước này mình làm linh hoạt: Kiểm tra xem DB đang lưu mã hóa (bcrypt) hay lưu chữ thường (plain text)
     let isPasswordValid = false;

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { 
   Coffee, Users, Package, Star, FileText, Calendar, Clock, ShoppingCart, Home, 
-  Sun, Moon, Menu, X, Bell, Search, ChevronDown, LogOut, Settings, Globe, DollarSign 
+  Sun, Moon, Menu, X, Bell, Search, ChevronDown, LogOut, Settings, Globe, DollarSign, LayoutList 
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -11,10 +11,11 @@ import axios from "axios";
 const menuItems = [
   { path: "/", label: "Home", key: "home", icon: Home },
   { path: "/employees", label: "Employees", key: "employees", icon: Users },
-  { path: "/products", label: "Products", key: "products", icon: Package },
   { path: "/customers", label: "Customers", key: "customers", icon: Star },
   { path: "/scheduling", label: "Scheduling", key: "scheduling", icon: Calendar },
   { path: "/shift-management", label: "Shift Management", key: "shift_management", icon: Clock },
+  { path: "/employee-timesheet", label: "Employee Timesheet", key: "employee_timesheet", icon: LayoutList },
+  { path: "/my-timesheet", label: "My Timesheet", key: "my_timesheet", icon: LayoutList },
   { path: "/payroll", label: "Payroll", key: "payroll", icon: DollarSign },
   { path: "/logs", label: "System Logs", key: "logs", icon: FileText },
 ];
@@ -50,7 +51,7 @@ export default function AdminLayout({ children }) {
     fetchNotifs();
   }, []);
 
-  const userStr = localStorage.getItem('user');
+  const userStr = sessionStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
   const userName = user ? user.HoTen : t("admin_user") || "Admin User";
   
@@ -66,7 +67,7 @@ export default function AdminLayout({ children }) {
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (token) {
         await axios.post('http://localhost:5000/api/auth/logout', {}, {
           headers: { Authorization: `Bearer ${token}` }
@@ -75,8 +76,8 @@ export default function AdminLayout({ children }) {
     } catch (err) {
       console.error("Lỗi khi đăng xuất backend:", err);
     } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       navigate('/login');
     }
   };
@@ -85,12 +86,14 @@ export default function AdminLayout({ children }) {
   const allowedMenuItems = menuItems.filter(item => {
     if (!userRole) return item.path === "/";
     if (userRole === "3") {
-      const restricted = ["/employees", "/products", "/shift-management", "/logs"];
+      const restricted = ["/employees", "/shift-management", "/employee-timesheet", "/logs"];
       return !restricted.includes(item.path);
     }
     if (userRole === "2") {
-      return item.path !== "/logs";
+      // Quản lý xem được hết ngoại trừ log hệ thống và tính lương
+      return !["/logs", "/payroll"].includes(item.path);
     }
+    // Admin xem được tất cả
     return true;
   });
 
@@ -156,7 +159,9 @@ export default function AdminLayout({ children }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{userName}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userRole === "1" ? "Administrator" : "Staff"}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                {userRole === "1" ? t("role_admin") : userRole === "2" ? t("role_manager") : t("role_staff")}
+              </p>
             </div>
           </div>
           
@@ -289,7 +294,24 @@ export default function AdminLayout({ children }) {
                       {notifications.length === 0 ? (
                         <p className="p-4 text-sm text-slate-500 text-center">Không có thông báo mới.</p>
                       ) : notifications.map(n => (
-                        <div key={n.MaTB} className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer">
+                        <div 
+                          key={n.MaTB} 
+                          onClick={() => {
+                            setShowNotifications(false);
+                            const title = n.TieuDe.toLowerCase();
+                            const content = n.NoiDung.toLowerCase();
+                            if (title.includes("đăng ký") || title.includes("lịch") || content.includes("đăng ký") || content.includes("lịch")) {
+                              const weekMatch = n.NoiDung.match(/\d{4}-\d{2}-\d{2}/);
+                              const targetWeek = weekMatch ? weekMatch[0] : "";
+                              if (targetWeek) {
+                                navigate(`/scheduling?week=${targetWeek}&tab=register`);
+                              } else {
+                                navigate("/scheduling");
+                              }
+                            }
+                          }}
+                          className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer"
+                        >
                           <div className="font-bold text-sm text-slate-800 dark:text-white">{n.TieuDe}</div>
                           <div className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{n.NoiDung}</div>
                           <div className="text-[10px] text-slate-400 mt-2">{new Date(n.NgayTao).toLocaleString("vi-VN")}</div>

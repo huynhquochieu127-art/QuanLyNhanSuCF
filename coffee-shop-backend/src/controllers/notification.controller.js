@@ -2,7 +2,7 @@ const db = require('../config/db');
 
 exports.getNotifications = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM thongbao ORDER BY NgayTao DESC LIMIT 10');
+    const [rows] = await db.query('SELECT TOP 10 * FROM thongbao ORDER BY NgayTao DESC');
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Lỗi lấy thông báo:', error);

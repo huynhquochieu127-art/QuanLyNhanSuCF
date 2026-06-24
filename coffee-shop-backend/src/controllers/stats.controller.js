@@ -11,11 +11,11 @@ const getDashboardStats = async (req, res) => {
     const totalEmployees = empRes[0].total || 0;
 
     // 2. Số nhân viên đang làm việc hôm nay
-    const [workingTodayRes] = await db.query("SELECT COUNT(DISTINCT MaNhanVien) as count FROM chamcong WHERE DATE(NgayLam) = CURDATE()");
+    const [workingTodayRes] = await db.query("SELECT COUNT(DISTINCT MaNhanVien) as count FROM chamcong WHERE NgayLam = CAST(GETDATE() AS DATE)");
     const workingToday = workingTodayRes[0].count || 0;
 
     // 3. Số ca làm hôm nay
-    const [shiftsTodayRes] = await db.query("SELECT COUNT(DISTINCT MaCaLam) as count FROM phancanhanvien WHERE DATE(NgayLam) = CURDATE()");
+    const [shiftsTodayRes] = await db.query("SELECT COUNT(DISTINCT MaCaLam) as count FROM phancanhanvien WHERE NgayLam = CAST(GETDATE() AS DATE)");
     const shiftsToday = shiftsTodayRes[0].count || 0;
 
     // 4. Nhân viên đi trễ
@@ -24,7 +24,7 @@ const getDashboardStats = async (req, res) => {
       FROM chamcong c 
       JOIN phancanhanvien p ON c.MaNhanVien = p.MaNhanVien AND c.NgayLam = p.NgayLam 
       JOIN calam cl ON p.MaCaLam = cl.MaCaLam 
-      WHERE DATE(c.NgayLam) = CURDATE() AND TIME(c.GioCheckIn) > TIME(cl.GioBatDau)
+      WHERE c.NgayLam = CAST(GETDATE() AS DATE) AND CAST(c.GioCheckIn AS TIME) > cl.GioBatDau
     `;
     const [lateRes] = await db.query(lateQuery);
     const lateEmployees = lateRes[0].lateCount || 0;

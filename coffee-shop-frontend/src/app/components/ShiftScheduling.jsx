@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import {
   ArrowLeft, Calendar, Plus, X, AlertCircle, ChevronLeft, ChevronRight,
   Edit, Trash2, Users, Briefcase, CheckCircle, XCircle, Clock,
@@ -30,6 +30,7 @@ const STATUS_CONFIG = {
 };
 
 export default function ShiftScheduling() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("register"); // 'register' | 'approvals'
   const [shifts, setShifts] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
@@ -46,7 +47,7 @@ export default function ShiftScheduling() {
     return new Date(new Date(d).setDate(diff));
   });
 
-  const userStr = localStorage.getItem("user");
+  const userStr = sessionStorage.getItem("user");
   const currentUser = userStr ? JSON.parse(userStr) : null;
   const userRole = currentUser ? String(currentUser.MaVaiTro) : "3";
   const isStaff = userRole === "3";
@@ -65,7 +66,15 @@ export default function ShiftScheduling() {
         axios.get(`${API}/employees`)
       ]);
       if (shRes.data.success) setShifts(shRes.data.data);
-      if (stRes.data.success) setStaffMembers(stRes.data.data.filter(s => s.TrangThai === "Đang làm việc"));
+      if (stRes.data.success) {
+        setStaffMembers(
+          stRes.data.data.filter(s => 
+            s.TrangThai === "Đang làm việc" && 
+            String(s.MaVaiTro) !== "1" && 
+            String(s.MaVaiTro) !== "2"
+          )
+        );
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -101,6 +110,30 @@ export default function ShiftScheduling() {
   useEffect(() => {
     fetchShiftsAndStaff();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const weekParam = params.get("week");
+    if (weekParam) {
+      const parts = weekParam.split("-");
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        const parsedDate = new Date(y, m, d);
+        if (!isNaN(parsedDate.getTime())) {
+          const currentStr = currentWeekStart.toISOString().split("T")[0];
+          if (currentStr !== weekParam) {
+            setCurrentWeekStart(parsedDate);
+          }
+        }
+      }
+    }
+    const tabParam = params.get("tab");
+    if (tabParam && (tabParam === "register" || tabParam === "approvals")) {
+      setActiveTab(tabParam);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     fetchRegistrations();
@@ -194,29 +227,41 @@ export default function ShiftScheduling() {
   const getReg = (empId, date, shiftId) => {
     if (!shiftId) return null;
     return registrations.find(r => {
-      if (r.MaNhanVien !== empId || r.MaCaLam !== shiftId) return false;
+      if (r.MaNhanVien != empId || r.MaCaLam != shiftId) return false;
       const d = new Date(r.NgayLam);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       return dateStr === date;
     });
   };
 
+  const isPastDeadline = () => {
+    if (!currentWeekStart) return false;
+    const deadline = new Date(currentWeekStart);
+    deadline.setDate(deadline.getDate() - 1); // Sunday before Monday
+    deadline.setHours(18, 0, 0, 0); // 18h00
+    return new Date() > deadline;
+  };
+
   const getCanClick = (emp) => {
     if (weekStatus === 'admin_approved') return false;
     if (isAdmin) return false;
-    
-    if (isManager) {
-      return weekStatus === 'open' || weekStatus === 'pending' || weekStatus === 'manager_approved';
-    }
+    if (isManager) return false;
     
     if (isStaff) {
-      return weekStatus === 'open' && myEmployeeId === emp.MaNhanVien;
+      if (weekStatus === 'open' && isPastDeadline()) return false;
+      return weekStatus === 'open' && myEmployeeId == emp.MaNhanVien;
     }
     return false;
   };
 
   const handleCellToggle = (emp, date, shiftObj, existingItem) => {
     if (!shiftObj) return;
+
+    if (isStaff && weekStatus === 'open' && isPastDeadline()) {
+      toast.error("Đã quá hạn đăng ký lịch làm việc tuần này (Hạn cuối: 18h00 Chủ Nhật)!");
+      return;
+    }
+
     const canClick = getCanClick(emp);
     if (!canClick) return;
 
@@ -225,26 +270,17 @@ export default function ShiftScheduling() {
       return;
     }
 
-    // 1. Ngăn chặn đăng ký/hủy ca ngày hôm nay hoặc trong quá khứ (áp dụng cho nhân viên)
-    if (!isManager) {
-      const todayDate = new Date();
-      const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
-      if (date <= todayStr) {
-        toast.error("Chỉ có thể đăng ký/hủy ca làm cho ngày mai trở đi");
-        return;
-      }
-    }
 
     const key = `${emp.MaNhanVien}_${date}_${shiftObj.MaCaLam}`;
     const currentDraft = draftChanges[key];
     
-    // 2. Kiểm tra Full-time chỉ được 1 ca / ngày
-    const isFT = emp.LoaiNhanVien === 'Full-time' || emp.LoaiNhanVien === 'Toàn thời gian';
+    // 2. Kiểm tra mỗi nhân sự chỉ được làm tối đa 1 ca / ngày
     const isTryingToAdd = (!existingItem && currentDraft !== 'add') || (existingItem && currentDraft === 'remove');
     
-    if (isFT && isTryingToAdd) {
+    if (isTryingToAdd) {
       const existingShiftsForDay = registrations.filter(r => {
-        if (r.MaNhanVien !== emp.MaNhanVien) return false;
+        if (r.MaNhanVien != emp.MaNhanVien) return false;
+        if (r.TrangThai === 'rejected') return false; // Bỏ qua ca bị từ chối
         const d = new Date(r.NgayLam);
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         return dateStr === date;
@@ -252,15 +288,18 @@ export default function ShiftScheduling() {
       let draftAdds = 0;
       let draftRemoves = 0;
       Object.keys(draftChanges).forEach(k => {
-        const [eId, dStr] = k.split('_');
+        const [eId, dStr, sId] = k.split('_');
         if (eId == emp.MaNhanVien && dStr === date) {
           if (draftChanges[k] === 'add') draftAdds++;
-          if (draftChanges[k] === 'remove') draftRemoves++;
+          if (draftChanges[k] === 'remove') {
+            const hasReg = existingShiftsForDay.some(r => r.MaCaLam == sId);
+            if (hasReg) draftRemoves++;
+          }
         }
       });
       const totalShifts = existingShiftsForDay.length + draftAdds - draftRemoves;
       if (totalShifts >= 1) {
-        toast.error("Nhân viên Full-time chỉ được đăng ký tối đa 1 ca/ngày");
+        toast.error("Mỗi nhân viên chỉ được đăng ký tối đa 1 ca làm/ngày!");
         return;
       }
     }
@@ -379,8 +418,12 @@ export default function ShiftScheduling() {
               <Calendar className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-900 dark:text-white">Lịch Đăng Ký Ca</h1>
-              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">Xem lịch & đăng ký ca làm</p>
+              <h1 className="text-xl font-black text-slate-900 dark:text-white">
+                {weekStatus === 'admin_approved' ? "Lịch Làm Việc Chính Thức" : "Bảng Đăng Ký Ca Làm"}
+              </h1>
+              <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
+                {weekStatus === 'admin_approved' ? "Xem lịch làm việc chính thức của tuần" : "Xem lịch & đăng ký ca làm"}
+              </p>
             </div>
           </div>
         </div>
@@ -404,7 +447,7 @@ export default function ShiftScheduling() {
                 : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
             }`}
           >
-            <ClipboardList className="w-4 h-4" /> Đăng ký ca
+            <ClipboardList className="w-4 h-4" /> {weekStatus === 'admin_approved' ? "Lịch làm việc chính thức" : "Đăng ký ca"}
           </button>
           
           {isManager && (
@@ -427,28 +470,43 @@ export default function ShiftScheduling() {
         {/* ====== TAB 2: ĐĂNG KÝ CA (Grid như bảng Excel) ====== */}
         {activeTab === "register" && (
           <div className="p-4 overflow-x-auto">
-            <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
+            {isStaff && weekStatus === 'pending' ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50/50 dark:bg-zinc-900/50 rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800 my-4 shadow-sm animate-in fade-in zoom-in-95 duration-300">
+                <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 shadow-sm">
+                  <Calendar className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-black text-slate-800 dark:text-white mb-2">Đăng Ký Ca Đang Đóng</h3>
+                <p className="text-slate-500 dark:text-zinc-400 max-w-md text-sm px-6 leading-relaxed">
+                  Quản lý chưa mở cổng đăng ký lịch làm việc cho tuần này (<span className="font-bold">{weekLabel}</span>). 
+                  Vui lòng quay lại sau hoặc liên hệ quản lý để biết thêm chi tiết!
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
               <div>
-                <h2 className="text-lg font-black text-slate-900 dark:text-white">Bảng Đăng Ký Ca Làm</h2>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                  {weekStatus === 'admin_approved' ? "Lịch Làm Việc Chính Thức" : "Bảng Đăng Ký Ca Làm"}
+                </h2>
                   <p className="text-sm text-slate-500 mt-1">
                     Trạng thái tuần: 
                     <span className="ml-1 font-bold">
                       {weekStatus === 'pending' && <span className="text-slate-500">Chưa mở đăng ký</span>}
-                      {weekStatus === 'open' && <span className="text-sky-600">Đang mở đăng ký</span>}
+                      {weekStatus === 'open' && (
+                        <>
+                          <span className="text-sky-600">Đang mở đăng ký</span>
+                          {isPastDeadline() && <span className="text-rose-600 ml-2 font-black">(Đã hết hạn đăng ký - Hạn cuối: 18h00 Chủ Nhật)</span>}
+                        </>
+                      )}
                       {weekStatus === 'manager_approved' && <span className="text-amber-600">Chờ Admin duyệt</span>}
                       {weekStatus === 'admin_approved' && <span className="text-emerald-600">Đã chốt lịch</span>}
                     </span>
                   </p>
                 </div>
                 <div className="flex gap-2 items-center">
-                  {Object.keys(draftChanges).length > 0 && (
-                    <button onClick={handleSaveChanges} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
-                      {isSaving ? "Đang lưu..." : "Lưu đăng ký"}
-                    </button>
-                  )}
-                  {isManager && (weekStatus === 'pending' || weekStatus === 'open') && (
+                  {isManager && weekStatus === 'pending' && (
                     <button onClick={handleOpenRegistration} className="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
-                      <BellRing className="w-4 h-4" /> Gửi thông báo mở đăng ký
+                      <BellRing className="w-4 h-4" /> Mở đăng ký
                     </button>
                   )}
                   {isManager && weekStatus === 'open' && (
@@ -459,6 +517,19 @@ export default function ShiftScheduling() {
                   {isAdmin && weekStatus === 'manager_approved' && (
                     <button onClick={handleAdminFinalize} className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <CheckCircle className="w-4 h-4" /> Chốt lịch làm việc
+                    </button>
+                  )}
+                  {isStaff && (
+                    <button 
+                      onClick={handleSaveChanges} 
+                      disabled={Object.keys(draftChanges).length === 0 || isSaving || (weekStatus === 'open' && isPastDeadline())} 
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm ${
+                        Object.keys(draftChanges).length === 0 || (weekStatus === 'open' && isPastDeadline())
+                          ? "bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-600" 
+                          : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/10"
+                      }`}
+                    >
+                      {isSaving ? "Đang lưu..." : "Lưu đăng ký"}
                     </button>
                   )}
                   <button onClick={fetchRegistrations} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 rounded-xl text-sm font-bold transition-colors">
@@ -525,9 +596,12 @@ export default function ShiftScheduling() {
                       const isFT = emp.LoaiNhanVien === 'Full-time' || emp.LoaiNhanVien === 'Toàn thời gian';
                       const canClick = getCanClick(emp);
                       
+                      const isMyRow = String(emp.MaNhanVien) === String(myEmployeeId);
                       return (
-                      <tr key={emp.MaNhanVien} className="hover:bg-slate-50 bg-white">
-                        <td className="px-4 py-2 border border-slate-400 text-left font-bold text-slate-800 uppercase italic text-[13px]">{emp.HoTen}</td>
+                      <tr key={emp.MaNhanVien} className={`hover:bg-slate-50 ${isMyRow ? 'bg-amber-50/70 font-semibold' : 'bg-white'}`}>
+                        <td className={`px-4 py-2 border border-slate-400 text-left font-bold uppercase italic text-[13px] ${isMyRow ? 'text-amber-800 bg-amber-100/50' : 'text-slate-800'}`}>
+                          {emp.HoTen} {isMyRow && '(Bạn)'}
+                        </td>
                         {days.map(day => {
                           const rA = getReg(emp.MaNhanVien, day.date, caA?.MaCaLam);
                           const rB = getReg(emp.MaNhanVien, day.date, caB?.MaCaLam);
@@ -603,11 +677,13 @@ export default function ShiftScheduling() {
                 </tbody>
               </table>
             </div>
+            </>
+            )}
           </div>
         )}
 
         {/* ====== TAB 3: DUYỆT ĐĂNG KÝ (Manager only) ====== */}
-        {activeTab === "approve" && isManager && (
+        {activeTab === "approvals" && isManager && (
           <div className="p-6">
             <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
               <div>

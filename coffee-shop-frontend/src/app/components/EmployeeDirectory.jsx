@@ -13,7 +13,7 @@ export default function EmployeeDirectory() {
   // Lấy user role hiện tại để phân quyền hiển thị
   const [currentUserRole, setCurrentUserRole] = useState("3");
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
+    const userStr = sessionStorage.getItem("user");
     if (userStr) {
       setCurrentUserRole(String(JSON.parse(userStr).MaVaiTro));
     }
@@ -162,7 +162,7 @@ export default function EmployeeDirectory() {
         SoDienThoai: '',
         ChucVu: '',
         LoaiNhanVien: 'Full-time',
-        Luong: '',
+        Luong: '5000000',
         TrangThai: 'Đang làm việc',
         Email: '',
         MatKhau: '',
@@ -187,17 +187,15 @@ export default function EmployeeDirectory() {
         newData.LoaiNhanVien = 'Full-time';
       }
       
-      // Quy tắc: Part-time cố định lương 30K/h
-      if (name === 'LoaiNhanVien' && value === 'Part-time') {
-        newData.Luong = '30000';
-      } else if (name === 'LoaiNhanVien' && value === 'Full-time') {
-        // Reset lương khi chuyển lại Full-time nếu đang là 30k
-        if (prev.Luong === '30000') newData.Luong = '';
-      }
-      
-      // Ràng buộc chéo khi Role thay đổi (kéo theo LoaiNhanVien đổi)
+      // Tự động set lương dựa trên phân quyền và loại nhân viên
       if (newData.LoaiNhanVien === 'Part-time') {
         newData.Luong = '30000';
+      } else if (newData.LoaiNhanVien === 'Full-time') {
+        if (newData.Role === '2') {
+          newData.Luong = '8000000';
+        } else {
+          newData.Luong = '5000000';
+        }
       }
 
       return newData;

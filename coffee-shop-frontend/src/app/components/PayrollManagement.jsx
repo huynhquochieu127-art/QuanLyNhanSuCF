@@ -17,7 +17,7 @@ export default function PayrollManagement() {
   const [isCalculating, setIsCalculating] = useState(false);
 
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [wageConfig, setWageConfig] = useState({ hourlyRate: '30000', fullTimeBase: '6000000' });
+  const [wageConfig, setWageConfig] = useState({ hourlyRate: '30000', fullTimeBase: '5000000' });
 
   useEffect(() => {
     const saved = localStorage.getItem("wage_config");
@@ -57,6 +57,23 @@ export default function PayrollManagement() {
       }
     } catch (error) {
       toast.error("Lỗi tính lương");
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  const handleApprovePayroll = async () => {
+    if (!window.confirm(`Bạn có chắc chắn muốn CHỐT và DUYỆT bảng lương tháng ${month}/${year}? Sau khi duyệt, nhân viên sẽ nhận được thông báo và xem được phiếu lương.`)) return;
+
+    setIsCalculating(true);
+    try {
+      const res = await axios.post("http://localhost:5000/api/payroll/approve", { month, year });
+      if (res.data.success) {
+        toast.success(res.data.message || "Đã chốt và duyệt lương thành công!");
+        fetchReports();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Lỗi phê duyệt bảng lương");
     } finally {
       setIsCalculating(false);
     }
@@ -106,19 +123,29 @@ export default function PayrollManagement() {
           </div>
 
           <div className="flex gap-2">
-            <button 
-              onClick={() => setShowConfigModal(true)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-bold text-sm rounded-xl transition-colors shadow-sm flex items-center gap-2"
-            >
-              <Settings className="w-4 h-4" /> Cấu hình
-            </button>
-            <button 
-              onClick={handleCalculatePayroll}
-              disabled={isCalculating}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-bold text-sm rounded-xl transition-colors shadow-sm flex items-center gap-2"
-            >
-              {isCalculating ? "Đang tính..." : <><Calculator className="w-4 h-4" /> Tính Lương</>}
-            </button>
+            {reports.length > 0 && reports[0].TrangThai === 'approved' ? (
+              <span className="px-4 py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 font-bold text-sm rounded-xl flex items-center gap-2 border border-emerald-200 dark:border-emerald-800">
+                <FileText className="w-4 h-4" /> Đã chốt & gửi NV
+              </span>
+            ) : (
+              <>
+                <button 
+                  onClick={handleCalculatePayroll}
+                  disabled={isCalculating}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-bold text-sm rounded-xl transition-colors shadow-sm flex items-center gap-2"
+                >
+                  {isCalculating ? "Đang tính..." : <><Calculator className="w-4 h-4" /> Tính Lương</>}
+                </button>
+                <button 
+                  onClick={handleApprovePayroll}
+                  disabled={isCalculating || reports.length === 0}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors shadow-sm flex items-center gap-2"
+                  title={reports.length === 0 ? "Vui lòng tính lương trước khi chốt" : ""}
+                >
+                  Chốt & Duyệt Lương
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -144,12 +171,13 @@ export default function PayrollManagement() {
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Tổng Thu Nhập</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Khấu Trừ</th>
                 <th className="p-4 text-xs font-bold text-emerald-600 uppercase tracking-wider text-right">Thực Lãnh</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Trạng thái</th>
               </tr>
             </thead>
             <tbody>
               {reports.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-500 font-medium">
+                  <td colSpan="8" className="p-8 text-center text-slate-500 font-medium">
                     Chưa có bảng lương tháng này. Vui lòng bấm "Tính Lương".
                   </td>
                 </tr>
@@ -168,6 +196,15 @@ export default function PayrollManagement() {
                       <td className="p-4 text-sm font-bold text-slate-700 dark:text-zinc-300 text-right">{tongThuNhap.toLocaleString('vi-VN')} đ</td>
                       <td className="p-4 text-sm font-bold text-rose-500 text-right">-{Number(rep.KhauTru).toLocaleString('vi-VN')} đ</td>
                       <td className="p-4 text-sm font-black text-emerald-600 dark:text-emerald-400 text-right">{Number(rep.TongLuong).toLocaleString('vi-VN')} đ</td>
+                      <td className="p-4 text-center">
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
+                          rep.TrangThai === 'approved' 
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
+                            : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400'
+                        }`}>
+                          {rep.TrangThai === 'approved' ? 'Đã duyệt' : 'Bản nháp'}
+                        </span>
+                      </td>
                     </tr>
                   )
                 })

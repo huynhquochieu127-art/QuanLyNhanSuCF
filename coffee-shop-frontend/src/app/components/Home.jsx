@@ -1,14 +1,16 @@
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Coffee, Clock, Calendar, Users, Package, Star, FileText, LogIn, LogOut, TrendingUp, BarChart3, Bell, DollarSign, FileEdit, Printer, Download, X, CheckCircle2, AlertCircle, Send, AlertTriangle, UserMinus, UserCheck } from "lucide-react";
+import { ArrowLeft, Coffee, Clock, Calendar, Users, Package, Star, FileText, LogIn, LogOut, TrendingUp, BarChart3, Bell, DollarSign, FileEdit, Printer, Download, X, CheckCircle2, AlertCircle, Send, AlertTriangle, UserMinus, UserCheck, LayoutList } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import { motion, AnimatePresence } from "motion/react";
 import { useLanguage } from "../context/LanguageContext";
 import axios from "axios";
 import { toast } from "sonner";
+import AdminLayout from "./AdminLayout";
 
 export default function Home() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
 
   const attendanceTrendData = [
     { name: "Đúng giờ", value: 85, color: "#10b981" },
@@ -17,7 +19,7 @@ export default function Home() {
   ];
 
   // Lọc các module hiển thị dựa theo vai trò tài khoản
-  const userStr = localStorage.getItem('user');
+  const userStr = sessionStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
   const userRole = user ? String(user.MaVaiTro) : null;
 
@@ -58,6 +60,7 @@ export default function Home() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [payslipData, setPayslipData] = useState(null);
+  const [payslipError, setPayslipError] = useState(null);
 
   // States của Bổ sung điểm danh / Yêu cầu
   const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica
@@ -83,6 +86,10 @@ export default function Home() {
 
   // Dữ liệu thống kê dành cho Admin
   const [adminStats, setAdminStats] = useState(null);
+
+  // States quản lý thông báo
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Fetch dữ liệu chấm công hôm nay và danh sách yêu cầu
   useEffect(() => {
@@ -133,7 +140,7 @@ export default function Home() {
 
       // Fetch thống kê Admin
       const fetchAdminStats = async () => {
-        if (userRole === "1" || userRole === "2") {
+        if (userRole === "1") {
           try {
             const res = await axios.get(`http://localhost:5000/api/stats/dashboard`);
             if (res.data.success) {
@@ -145,6 +152,18 @@ export default function Home() {
         }
       };
 
+      // Fetch thông báo
+      const fetchNotifs = async () => {
+        try {
+          const res = await axios.get("http://localhost:5000/api/notifications");
+          if (res.data.success) {
+            setNotifications(res.data.data);
+          }
+        } catch (error) {
+          console.error("Lỗi tải thông báo:", error);
+        }
+      };
+
       fetchTimekeeping();
       
       if (showProfileModal && !profileData) {
@@ -152,6 +171,7 @@ export default function Home() {
       }
 
       fetchAdminStats();
+      fetchNotifs();
     }
   }, [user?.MaTaiKhoan, showProfileModal, userRole]);
 
@@ -188,7 +208,7 @@ export default function Home() {
         // Update user state and local storage as well if HoTen changed
         if (editProfileForm.HoTen !== user.HoTen) {
           const updatedUser = { ...user, HoTen: editProfileForm.HoTen };
-          localStorage.setItem('user', JSON.stringify(updatedUser));
+          sessionStorage.setItem('user', JSON.stringify(updatedUser));
           // Note: we might need to reload or rely on the state update above if we had a full context
         }
         
@@ -206,14 +226,18 @@ export default function Home() {
   useEffect(() => {
     if (user?.MaTaiKhoan && showPayslipModal) {
       const fetchPayslip = async () => {
+        setPayslipError(null);
+        setPayslipData(null);
         try {
-          const res = await axios.get(`http://localhost:5000/api/payroll/me/${user.MaTaiKhoan}?month=${payslipMonth}`);
+          const res = await axios.get(`http://localhost:5000/api/payroll/me/${user.MaTaiKhoan}?month=${payslipMonth}&_t=${Date.now()}`);
           if (res.data.success) {
             setPayslipData(res.data.data);
+          } else {
+            setPayslipError(res.data.message || "Phiếu lương chưa được phê duyệt.");
           }
         } catch (error) {
           console.error("Lỗi lấy phiếu lương", error);
-          toast.error("Không thể tải phiếu lương");
+          setPayslipError(error.response?.data?.message || "Không thể tải phiếu lương");
         }
       };
       fetchPayslip();
@@ -267,7 +291,7 @@ export default function Home() {
   // Hàm đăng xuất
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (token) {
         await axios.post('http://localhost:5000/api/auth/logout', {}, {
           headers: {
@@ -278,8 +302,8 @@ export default function Home() {
     } catch (err) {
       console.error("Lỗi khi đăng xuất backend:", err);
     } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       window.location.href = '/login';
     }
   };
@@ -364,7 +388,6 @@ export default function Home() {
 
   const modules = [
     { to: "/employees", icon: Users, title: t("nav_employees") || "Nhân viên", description: t("desc_employees") || "Quản lý hồ sơ nhân viên", color: "bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400" },
-    { to: "/products", icon: Package, title: t("nav_products"), description: t("desc_products"), color: "bg-green-100 dark:bg-green-950/30 text-green-600 dark:text-green-400" },
     { to: "/customers", icon: Star, title: t("nav_customers"), description: t("desc_customers"), color: "bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400" },
     { to: "/timekeeping", icon: CheckCircle2, title: t("nav_timekeeping") || "Chấm công", description: t("desc_timekeeping") || "Điểm danh & Quản lý giờ làm", color: "bg-cyan-100 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400" },
     { to: "/scheduling", icon: Calendar, title: t("nav_scheduling"), description: t("desc_scheduling"), color: "bg-pink-100 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400" },
@@ -377,6 +400,8 @@ export default function Home() {
       forStaffOnly: true
     },
     { to: "/shift-management", icon: Clock, title: "Quản lý Ca làm", description: "Thiết lập và quản lý các khung giờ ca làm", color: "bg-teal-100 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400" },
+    { to: "/employee-timesheet", icon: LayoutList, title: t("nav_employee_timesheet") || "Bảng Công Nhân Viên", description: "Quản lý điểm danh, yêu cầu và bảng công tháng", color: "bg-violet-100 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400", managerOnly: true },
+    { to: "/my-timesheet", icon: LayoutList, title: t("nav_my_timesheet") || "Bảng Công Của Tôi", description: "Xem chi tiết số công hàng tháng & phản hồi", color: "bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400" },
     { to: "/payroll", icon: DollarSign, title: t("nav_payroll") || "Quản lý lương", description: t("desc_payroll") || "Tính toán và xuất bảng lương", color: "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400" },
     {
       onClick: () => setShowPayslipModal(true),
@@ -415,6 +440,10 @@ export default function Home() {
       return userRole === "3";
     }
 
+    if (m.managerOnly) {
+      return userRole === "1" || userRole === "2";
+    }
+
     if (m.onClick) return !!userRole;
 
     // Nếu chưa đăng nhập, chỉ cho phép xem trang Login và Home
@@ -424,13 +453,13 @@ export default function Home() {
     
     // Nếu là Staff (3), ẩn các module quản lý
     if (userRole === "3") {
-      const restricted = ["/employees", "/products", "/shift-management", "/logs", "/payroll"];
+      const restricted = ["/employees", "/shift-management", "/logs", "/payroll"];
       return !restricted.includes(m.to);
     }
     
-    // Nếu là Manager (2), ẩn logs (chỉ Admin được xem logs) và ẩn Login Portal
+    // Nếu là Manager (2), ẩn logs, ẩn tính lương và ẩn Login Portal
     if (userRole === "2") {
-      return m.to !== "/logs" && m.to !== "/login";
+      return m.to !== "/logs" && m.to !== "/payroll" && m.to !== "/login";
     }
     
     // Admin (1) xem được tất cả trừ nút Login Portal
@@ -440,8 +469,8 @@ export default function Home() {
   const filteredModules = modules.filter(isAllowed);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 transition-colors duration-300 p-6 md:p-10">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <AdminLayout>
+      <div className="space-y-8">
         
         {userRole === "3" ? (
           /* --- STAFF DASHBOARD HEADER --- */
@@ -466,10 +495,56 @@ export default function Home() {
               
               {/* Bell/Notification */}
               <div className="relative flex-shrink-0">
-                <button className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300 relative"
+                >
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full animate-pulse" />
+                  )}
                 </button>
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 overflow-hidden z-50 text-left">
+                    <div className="p-4 border-b border-slate-200 dark:border-zinc-800 font-bold text-slate-800 dark:text-white">
+                      Thông báo ({notifications.length})
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <p className="p-4 text-sm text-slate-500 text-center">Không có thông báo mới.</p>
+                      ) : notifications.map(n => (
+                        <div 
+                          key={n.MaTB} 
+                          onClick={() => {
+                            setShowNotifications(false);
+                            const title = n.TieuDe.toLowerCase();
+                            const content = n.NoiDung.toLowerCase();
+                            if (title.includes("đăng ký") || title.includes("lịch") || content.includes("đăng ký") || content.includes("lịch")) {
+                              const isStaff = user && String(user.MaVaiTro) === "3";
+                              const isScheduleFinalized = title.includes("lịch") || content.includes("duyệt");
+                              if (isStaff && isScheduleFinalized) {
+                                setShowMyScheduleModal(true);
+                              } else {
+                                const weekMatch = n.NoiDung.match(/\d{4}-\d{2}-\d{2}/);
+                                const targetWeek = weekMatch ? weekMatch[0] : "";
+                                if (targetWeek) {
+                                  navigate(`/scheduling?week=${targetWeek}&tab=register`);
+                                } else {
+                                  navigate("/scheduling");
+                                }
+                              }
+                            }
+                          }}
+                          className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer"
+                        >
+                          <div className="font-bold text-sm text-slate-800 dark:text-white">{n.TieuDe}</div>
+                          <div className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{n.NoiDung}</div>
+                          <div className="text-[10px] text-slate-400 mt-2">{new Date(n.NgayTao).toLocaleString("vi-VN")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -515,7 +590,13 @@ export default function Home() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">{t("home_title")}</h1>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{t("home_welcome")}</p>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">
+                    {userRole === "1" 
+                      ? t("home_welcome_admin") 
+                      : userRole === "2" 
+                        ? t("home_welcome_manager") 
+                        : t("home_welcome_staff")}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2.5">
@@ -526,8 +607,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* THỐNG KÊ ADMIN (Role 1 và 2) */}
-            {(userRole === "1" || userRole === "2") && adminStats && (
+            {/* THỐNG KÊ ADMIN (Role 1 only) */}
+            {userRole === "1" && adminStats && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
                   {/* Card 1: Tổng số nhân viên */}
@@ -719,10 +800,9 @@ export default function Home() {
             })}
           </div>
         </div>
-        
       </div>
 
-      {/* --- MODAL PHIẾU LƯƠNG --- */}
+      <AnimatePresence>
       {showPayslipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm dark:bg-zinc-950/80 animate-fade-in overflow-y-auto">
           <motion.div
@@ -784,7 +864,17 @@ export default function Home() {
               </div>
 
               {/* Salary Calculations & Specs */}
-              {payslipData ? (
+              {payslipError ? (
+                <div className="text-center py-16 text-slate-500 space-y-4">
+                  <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <AlertCircle className="w-8 h-8 text-amber-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-extrabold text-slate-800 dark:text-zinc-200">{payslipError}</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">Vui lòng đợi Ban quản lý/Admin tính toán và duyệt bảng lương chính thức.</p>
+                  </div>
+                </div>
+              ) : payslipData ? (
                 <div className="space-y-4">
                   {/* Key Metrics Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -863,7 +953,8 @@ export default function Home() {
                 onClick={() => {
                   toast.success("Đang kết nối đến máy in để in phiếu lương...");
                 }}
-                className="px-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-850 transition-colors flex items-center gap-2"
+                disabled={!payslipData}
+                className="px-4 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-850 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Printer className="w-4 h-4" />
                 In phiếu lương
@@ -872,7 +963,8 @@ export default function Home() {
                 onClick={() => {
                   toast.success("Bắt đầu tải xuống PDF Phiếu lương...");
                 }}
-                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-colors flex items-center gap-2"
+                disabled={!payslipData}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold text-xs rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
                 Tải xuống PDF
@@ -1331,6 +1423,7 @@ export default function Home() {
           </motion.div>
         </div>
       )}
+      </AnimatePresence>
       {/* Profile Modal */}
       <AnimatePresence>
         {showProfileModal && profileData && (
@@ -1497,6 +1590,6 @@ export default function Home() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </AdminLayout>
   );
 }

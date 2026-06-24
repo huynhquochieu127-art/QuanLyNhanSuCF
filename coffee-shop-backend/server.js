@@ -21,9 +21,9 @@ const posRoutes = require('./src/routes/pos.routes');
 const tableRoutes = require('./src/routes/table.routes');
 const payrollRoutes = require('./src/routes/payroll.routes');
 const positionRoutes = require('./src/routes/position.routes');
+const notificationRoutes = require('./src/routes/notification.routes');
 const shiftRoutes = require('./src/routes/shift.routes');
 const statsRoutes = require('./src/routes/stats.routes');
-const notificationRoutes = require('./src/routes/notification.routes');
 const discountRoutes = require('./src/routes/discount.routes');
 const timesheetRoutes = require('./src/routes/timesheet.routes');
 
@@ -36,9 +36,9 @@ app.use('/api/pos', posRoutes);
 app.use('/api/tables', tableRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/positions', positionRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/stats', statsRoutes);
-app.use('/api/notifications', notificationRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/timesheets', timesheetRoutes);
 

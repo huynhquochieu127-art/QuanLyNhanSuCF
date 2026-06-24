@@ -63,16 +63,25 @@ export default function Home() {
   const [payslipError, setPayslipError] = useState(null);
 
   // States của Bổ sung điểm danh / Yêu cầu
-  const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica
+  const [requestCategory, setRequestCategory] = useState("bosung"); // bosung, xinnghi, doica, fulltime, nghiviec
   const [missingDate, setMissingDate] = useState(todayStr);
-  const [missingShift, setMissingShift] = useState("Ca Hành Chính (08:00 - 17:00)");
+  const [missingShift, setMissingShift] = useState("");
   const [missingType, setMissingType] = useState("both"); // both, checkin, checkout
   const [missingTimeIn, setMissingTimeIn] = useState("08:00");
-  const [missingTimeOut, setMissingTimeOut] = useState("17:00");
+  const [missingTimeOut, setMissingTimeOut] = useState("17:05");
   const [missingReason, setMissingReason] = useState("");
-  // Dành riêng cho Đổi ca
+  // Dành riêng cho Đổi ca và Tích hợp lịch làm việc
   const [targetSwapShift, setTargetSwapShift] = useState(""); 
   const [submitting, setSubmitting] = useState(false);
+  const [userSchedules, setUserSchedules] = useState([]);
+  const [standardShifts, setStandardShifts] = useState([]);
+  const [employeeList, setEmployeeList] = useState([]);
+  const [selectedSwapEmp, setSelectedSwapEmp] = useState("");
+  const [targetEmpSchedules, setTargetEmpSchedules] = useState([]);
+  const [swapType, setSwapType] = useState("self_swap"); // self_swap, peer_swap
+  const [selectedSourceShift, setSelectedSourceShift] = useState("");
+  const [selectedTargetShift, setSelectedTargetShift] = useState("");
+  const [isOutsideShift, setIsOutsideShift] = useState(false);
 
   // States của Xem Thông tin cá nhân
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -84,12 +93,12 @@ export default function Home() {
   // Danh sách đơn bổ sung điểm danh
   const [attendanceRequests, setAttendanceRequests] = useState([]);
 
+  // States cho Thông báo
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
   // Dữ liệu thống kê dành cho Admin
   const [adminStats, setAdminStats] = useState(null);
-
-  // States quản lý thông báo
-  const [notifications, setNotifications] = useState([]);
-  const [showNotifications, setShowNotifications] = useState(false);
 
   // Fetch dữ liệu chấm công hôm nay và danh sách yêu cầu
   useEffect(() => {
@@ -114,13 +123,14 @@ export default function Home() {
             setAttendanceRequests(reqRes.data.data.map(r => ({
               id: `RQ-${r.MaYeuCau}`,
               date: new Date(r.Ngay).toISOString().split('T')[0],
-              shift: r.CaLam,
+              shift: r.CaLam || "N/A",
               type: r.Loai,
               time: r.ThoiGian,
               reason: r.LyDo,
               status: r.TrangThai
             })));
           }
+      // Profile and notifications are fetched separately below
         } catch (error) {
           console.error("Lỗi lấy dữ liệu", error);
         }
@@ -155,7 +165,7 @@ export default function Home() {
       // Fetch thông báo
       const fetchNotifs = async () => {
         try {
-          const res = await axios.get("http://localhost:5000/api/notifications");
+          const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
           if (res.data.success) {
             setNotifications(res.data.data);
           }
@@ -174,6 +184,96 @@ export default function Home() {
       fetchNotifs();
     }
   }, [user?.MaTaiKhoan, showProfileModal, userRole]);
+
+  // Tải thông tin lịch phân ca, ca làm tiêu chuẩn và nhân viên khi mở modal yêu cầu
+  useEffect(() => {
+    if (showMissingAttendanceModal && user?.MaTaiKhoan) {
+      // Tải ca làm tiêu chuẩn
+      axios.get('http://localhost:5000/api/shifts')
+        .then(res => {
+          if (res.data.success) {
+            setStandardShifts(res.data.data);
+            if (res.data.data.length > 0 && !missingShift) {
+              setMissingShift(res.data.data[0].MaCaLam);
+            }
+          }
+        })
+        .catch(err => console.error("Lỗi tải ca làm tiêu chuẩn:", err));
+
+      // Tải danh sách nhân viên hoạt động
+      axios.get('http://localhost:5000/api/employees')
+        .then(res => {
+          if (res.data.success) {
+            const otherEmployees = res.data.data.filter(emp => String(emp.MaNhanVien) !== String(user.MaTaiKhoan));
+            setEmployeeList(otherEmployees);
+            if (otherEmployees.length > 0) {
+              setSelectedSwapEmp(otherEmployees[0].MaNhanVien);
+            }
+          }
+        })
+        .catch(err => console.error("Lỗi tải danh sách nhân viên:", err));
+    }
+  }, [showMissingAttendanceModal, user?.MaTaiKhoan]);
+
+  // Tải lịch phân ca của bản thân khi thay đổi ngày
+  useEffect(() => {
+    if (showMissingAttendanceModal && user?.MaTaiKhoan && missingDate) {
+      axios.get(`http://localhost:5000/api/timekeeping/scheduled-shifts?employeeId=${user.MaTaiKhoan}&date=${missingDate}`)
+        .then(res => {
+          if (res.data.success) {
+            setUserSchedules(res.data.data);
+            if (res.data.data.length > 0) {
+              setSelectedSourceShift(res.data.data[0].MaCaLam);
+              setIsOutsideShift(false);
+            } else {
+              setSelectedSourceShift("");
+              setIsOutsideShift(true);
+            }
+          }
+        })
+        .catch(err => console.error("Lỗi tải lịch phân ca người dùng:", err));
+    }
+  }, [showMissingAttendanceModal, user?.MaTaiKhoan, missingDate]);
+
+  // Tải lịch phân ca của nhân viên muốn đổi ca cùng khi ngày hoặc nhân viên đổi thay đổi
+  useEffect(() => {
+    if (showMissingAttendanceModal && selectedSwapEmp && missingDate && requestCategory === "doica" && swapType === "peer_swap") {
+      axios.get(`http://localhost:5000/api/timekeeping/scheduled-shifts?employeeId=${selectedSwapEmp}&date=${missingDate}`)
+        .then(res => {
+          if (res.data.success) {
+            setTargetEmpSchedules(res.data.data);
+            if (res.data.data.length > 0) {
+              setSelectedTargetShift(res.data.data[0].MaCaLam);
+            } else {
+              setSelectedTargetShift("");
+            }
+          }
+        })
+        .catch(err => console.error("Lỗi tải lịch phân ca nhân viên đổi:", err));
+    } else {
+      setTargetEmpSchedules([]);
+      setSelectedTargetShift("");
+    }
+  }, [showMissingAttendanceModal, selectedSwapEmp, missingDate, requestCategory, swapType]);
+
+  // Tự động điền giờ check-in / check-out khi chọn ca bổ sung công
+  useEffect(() => {
+    if (requestCategory === "bosung" && showMissingAttendanceModal) {
+      if (isOutsideShift) {
+        const selectedShiftObj = standardShifts.find(s => String(s.MaCaLam) === String(missingShift));
+        if (selectedShiftObj) {
+          setMissingTimeIn(selectedShiftObj.GioBatDau);
+          setMissingTimeOut(selectedShiftObj.GioKetThuc);
+        }
+      } else {
+        const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+        if (selectedShiftObj) {
+          setMissingTimeIn(selectedShiftObj.GioBatDau);
+          setMissingTimeOut(selectedShiftObj.GioKetThuc);
+        }
+      }
+    }
+  }, [requestCategory, selectedSourceShift, isOutsideShift, missingShift, userSchedules, standardShifts, showMissingAttendanceModal]);
 
   // Bộ đếm thời gian đếm ngược (đếm số giờ đã làm)
   useEffect(() => {
@@ -326,53 +426,118 @@ export default function Home() {
     try {
       let typeText = "";
       let timeText = "";
+      let caText = "";
       
       if (requestCategory === 'bosung') {
+        if (isOutsideShift) {
+          const selectedShiftObj = standardShifts.find(s => String(s.MaCaLam) === String(missingShift));
+          caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "Ca Ngoài";
+        } else {
+          const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+          caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "N/A";
+        }
         typeText = `Bổ sung: ${missingType === 'both' ? 'Cả In/Out' : (missingType === 'checkin' ? 'Check-in' : 'Check-out')}`;
         timeText = missingType === 'both' ? `${missingTimeIn} - ${missingTimeOut}` : (missingType === 'checkin' ? missingTimeIn : missingTimeOut);
       } else if (requestCategory === 'xinnghi') {
-        typeText = "Xin nghỉ phép";
-        timeText = "Cả ca";
-      } else if (requestCategory === 'doica') {
-        typeText = "Xin đổi ca";
-        if (!targetSwapShift.trim()) {
-          toast.error("Vui lòng nhập ca muốn đổi sang");
+        if (userSchedules.length === 0) {
+          toast.error("Bạn không có lịch làm việc trong ngày này để xin nghỉ");
           setSubmitting(false);
           return;
         }
-        timeText = `Đổi sang: ${targetSwapShift}`;
+        const selectedShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+        caText = selectedShiftObj ? selectedShiftObj.TenCaLam : "N/A";
+        typeText = "Xin nghỉ ca làm";
+        timeText = "Cả ca";
+      } else if (requestCategory === 'doica') {
+        if (userSchedules.length === 0) {
+          toast.error("Bạn không có lịch làm việc trong ngày này để xin đổi");
+          setSubmitting(false);
+          return;
+        }
+        
+        const selectedSourceShiftObj = userSchedules.find(s => String(s.MaCaLam) === String(selectedSourceShift));
+        caText = selectedSourceShiftObj ? selectedSourceShiftObj.TenCaLam : "N/A";
+        typeText = "Xin đổi ca";
+        
+        if (swapType === "self_swap") {
+          if (!selectedTargetShift) {
+            toast.error("Vui lòng chọn ca làm muốn đổi sang");
+            setSubmitting(false);
+            return;
+          }
+          const selectedTargetShiftObj = standardShifts.find(s => String(s.MaCaLam) === String(selectedTargetShift));
+          const targetName = selectedTargetShiftObj ? selectedTargetShiftObj.TenCaLam : "Ca Khác";
+          timeText = `self_swap|${selectedSourceShift}|${selectedTargetShift}`;
+        } else {
+          if (!selectedSwapEmp) {
+            toast.error("Vui lòng chọn nhân viên muốn đổi");
+            setSubmitting(false);
+            return;
+          }
+          if (targetEmpSchedules.length === 0) {
+            toast.error("Nhân viên được chọn không có ca làm việc nào trong ngày này");
+            setSubmitting(false);
+            return;
+          }
+          if (!selectedTargetShift) {
+            toast.error("Vui lòng chọn ca làm của nhân viên đó");
+            setSubmitting(false);
+            return;
+          }
+          const selectedTargetShiftObj = targetEmpSchedules.find(s => String(s.MaCaLam) === String(selectedTargetShift));
+          const targetName = selectedTargetShiftObj ? selectedTargetShiftObj.TenCaLam : "Ca Khác";
+          const targetEmpObj = employeeList.find(emp => String(emp.MaNhanVien) === String(selectedSwapEmp));
+          const targetEmpName = targetEmpObj ? targetEmpObj.HoTen : "Nhân viên";
+          timeText = `peer_swap|${selectedSourceShift}|${selectedTargetShift}|${selectedSwapEmp}`;
+        }
+      } else if (requestCategory === 'fulltime') {
+        typeText = "Xin chuyển Full-time";
+        timeText = `Áp dụng từ: ${missingDate}`;
+        caText = ""; 
+      } else if (requestCategory === 'nghiviec') {
+        typeText = "Xin nghỉ việc";
+        timeText = `Nghỉ từ ngày: ${missingDate}`;
+        caText = ""; 
       }
       
       const payload = {
         MaNhanVien: user.MaTaiKhoan,
         Ngay: missingDate,
-        CaLam: missingShift,
+        CaLam: caText,
         Loai: typeText,
         ThoiGian: timeText,
         LyDo: missingReason
       };
 
-      if (requestCategory === "doica") {
-        payload.targetShift = targetSwapShift;
-      }
       const res = await axios.post(`http://localhost:5000/api/timekeeping/request`, payload);
       
       if (res.data.success) {
+        let displayTime = timeText;
+        if (requestCategory === 'doica') {
+          if (swapType === "self_swap") {
+            displayTime = `Đổi sang ca: ${standardShifts.find(s => String(s.MaCaLam) === String(selectedTargetShift))?.TenCaLam || ''}`;
+          } else {
+            displayTime = `Đổi với: ${employeeList.find(e => String(e.MaNhanVien) === String(selectedSwapEmp))?.HoTen || ''} (Ca ${targetEmpSchedules.find(s => String(s.MaCaLam) === String(selectedTargetShift))?.TenCaLam || ''})`;
+          }
+        }
+
         const newRequest = {
           id: `RQ-${res.data.data.id}`,
           date: missingDate,
-          shift: missingShift,
+          shift: caText || "N/A",
           type: typeText,
-          time: timeText,
+          time: displayTime,
           reason: missingReason,
           status: "pending"
         };
         
         setAttendanceRequests([newRequest, ...attendanceRequests]);
         setMissingReason("");
-        toast.success("Gửi yêu cầu bổ sung điểm danh thành công! Đang chờ phê duyệt.");
+        setTargetSwapShift("");
+        toast.success("Gửi yêu cầu thành công! Đang chờ phê duyệt.");
       }
     } catch (error) {
+      console.error(error);
       toast.error("Lỗi khi gửi yêu cầu");
     } finally {
       setSubmitting(false);
@@ -384,6 +549,114 @@ export default function Home() {
     setAttendanceRequests(updated);
     localStorage.setItem(`attendance_requests_${user?.MaTaiKhoan}`, JSON.stringify(updated));
     toast.success("Đã hủy yêu cầu bổ sung thành công.");
+  };
+
+  const handleMarkNotifRead = async (id, isRequest) => {
+    try {
+      await axios.put(`http://localhost:5000/api/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n.MaThongBao === id ? { ...n, TrangThaiDoc: 1 } : n));
+      setShowNotifDropdown(false);
+      if (isRequest && (userRole === "1" || userRole === "2")) {
+        window.location.href = "/timekeeping"; 
+      }
+    } catch (err) {
+      console.error("Lỗi khi đọc thông báo:", err);
+    }
+  };
+
+  const renderBellNotification = () => {
+    const unreadCount = notifications.filter(n => n.TrangThaiDoc === 0).length;
+    return (
+      <div className="relative flex-shrink-0">
+        <button 
+          onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+          className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300 relative"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900 text-white text-[10px] font-black flex items-center justify-center animate-bounce">
+              {unreadCount}
+            </span>
+          )}
+        </button>
+
+        {showNotifDropdown && (
+          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 overflow-hidden py-1">
+            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950 flex justify-between items-center">
+              <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider">Thông báo</span>
+              {unreadCount > 0 && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      for (const notif of notifications) {
+                        if (notif.TrangThaiDoc === 0) {
+                          await axios.put(`http://localhost:5000/api/notifications/${notif.MaThongBao}/read`);
+                        }
+                      }
+                      setNotifications(prev => prev.map(n => ({ ...n, TrangThaiDoc: 1 })));
+                      toast.success("Đã đọc tất cả thông báo");
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  }}
+                  className="text-[10px] text-blue-500 hover:underline font-bold"
+                >
+                  Đọc tất cả
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-850">
+              {notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-slate-500 dark:text-zinc-400 font-medium">
+                  Chưa có thông báo nào
+                </div>
+              ) : (
+                notifications.map((notif) => (
+                  <div 
+                    key={notif.MaThongBao}
+                    onClick={() => handleMarkNotifRead(notif.MaThongBao, notif.Loai === 'request')}
+                    className={`px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-855 transition-colors cursor-pointer text-left relative flex gap-3 ${
+                      notif.TrangThaiDoc === 0 ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
+                    }`}
+                  >
+                    <div className="mt-0.5">
+                      {notif.Loai === 'request' ? (
+                        <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                          <AlertCircle className="w-4 h-4" />
+                        </div>
+                      ) : notif.Loai === 'approval' ? (
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                          <Bell className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-bold truncate ${notif.TrangThaiDoc === 0 ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-zinc-400'}`}>
+                        {notif.TieuDe}
+                      </p>
+                      <p className="text-xxs text-slate-500 dark:text-zinc-500 mt-0.5 line-clamp-2">
+                        {notif.NoiDung}
+                      </p>
+                      <span className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1 block font-semibold">
+                        {new Date(notif.NgayTao).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                      </span>
+                    </div>
+                    {notif.TrangThaiDoc === 0 && (
+                      <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 self-center" />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const modules = [
@@ -494,58 +767,7 @@ export default function Home() {
               </div>
               
               {/* Bell/Notification */}
-              <div className="relative flex-shrink-0">
-                <button 
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors text-slate-700 dark:text-zinc-300 relative"
-                >
-                  <Bell className="w-5 h-5" />
-                  {notifications.length > 0 && (
-                    <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full animate-pulse" />
-                  )}
-                </button>
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 overflow-hidden z-50 text-left">
-                    <div className="p-4 border-b border-slate-200 dark:border-zinc-800 font-bold text-slate-800 dark:text-white">
-                      Thông báo ({notifications.length})
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <p className="p-4 text-sm text-slate-500 text-center">Không có thông báo mới.</p>
-                      ) : notifications.map(n => (
-                        <div 
-                          key={n.MaTB} 
-                          onClick={() => {
-                            setShowNotifications(false);
-                            const title = n.TieuDe.toLowerCase();
-                            const content = n.NoiDung.toLowerCase();
-                            if (title.includes("đăng ký") || title.includes("lịch") || content.includes("đăng ký") || content.includes("lịch")) {
-                              const isStaff = user && String(user.MaVaiTro) === "3";
-                              const isScheduleFinalized = title.includes("lịch") || content.includes("duyệt");
-                              if (isStaff && isScheduleFinalized) {
-                                setShowMyScheduleModal(true);
-                              } else {
-                                const weekMatch = n.NoiDung.match(/\d{4}-\d{2}-\d{2}/);
-                                const targetWeek = weekMatch ? weekMatch[0] : "";
-                                if (targetWeek) {
-                                  navigate(`/scheduling?week=${targetWeek}&tab=register`);
-                                } else {
-                                  navigate("/scheduling");
-                                }
-                              }
-                            }
-                          }}
-                          className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer"
-                        >
-                          <div className="font-bold text-sm text-slate-800 dark:text-white">{n.TieuDe}</div>
-                          <div className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{n.NoiDung}</div>
-                          <div className="text-[10px] text-slate-400 mt-2">{new Date(n.NgayTao).toLocaleString("vi-VN")}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {renderBellNotification()}
             </div>
 
             {/* Right Panel: Attendance Card (cols 2) */}
@@ -599,11 +821,14 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
-                <span className="text-xs bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400 px-3 py-1.5 rounded-full font-bold">
-                  {t("system_active")}
-                </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
+                  <span className="text-xs bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400 px-3 py-1.5 rounded-full font-bold">
+                    {t("system_active")}
+                  </span>
+                </div>
+                {renderBellNotification()}
               </div>
             </div>
 
@@ -1191,17 +1416,19 @@ export default function Home() {
                 {/* Loại Yêu cầu */}
                 <div>
                   <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Loại Yêu Cầu</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { id: "bosung", label: "Bổ sung công" },
-                      { id: "xinnghi", label: "Xin nghỉ phép" },
-                      { id: "doica", label: "Xin đổi ca" }
+                      { id: "xinnghi", label: "Xin nghỉ ca" },
+                      { id: "doica", label: "Xin đổi ca" },
+                      { id: "fulltime", label: "Xin chuyển Full-time" },
+                      { id: "nghiviec", label: "Xin nghỉ việc" }
                     ].map((type) => (
                       <button
                         type="button"
                         key={type.id}
                         onClick={() => setRequestCategory(type.id)}
-                        className={`py-2 px-2 rounded-xl border text-xs font-bold transition-all ${
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
                           requestCategory === type.id 
                             ? "bg-sky-500 border-sky-500 text-white shadow-md" 
                             : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-850 text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
@@ -1227,88 +1454,219 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Shift Selector */}
-                <div>
-                  <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Ca làm việc liên quan</label>
-                  <select 
-                    value={missingShift}
-                    onChange={(e) => setMissingShift(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                  >
-                    <option value="Ca Hành Chính (08:00 - 17:00)">Ca Hành Chính (08:00 - 17:00)</option>
-                    <option value="Ca Sáng (08:00 - 12:00)">Ca Sáng (08:00 - 12:00)</option>
-                    <option value="Ca Chiều (13:00 - 17:00)">Ca Chiều (13:00 - 17:00)</option>
-                    <option value="Ca Tối (18:00 - 22:00)">Ca Tối (18:00 - 22:00)</option>
-                    <option value="Cả Ngày">Cả Ngày</option>
-                  </select>
-                </div>
-
-                {/* Render conditional inputs based on Request Category */}
-                {requestCategory === 'bosung' && (
-                  <>
-                    <div>
-                      <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Thông tin bổ sung</label>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                        {[
-                          { id: "both", label: "Cả In & Out" },
-                          { id: "checkin", label: "Giờ Check-in" },
-                          { id: "checkout", label: "Giờ Check-out" }
-                        ].map((type) => (
-                          <button
-                            type="button"
-                            key={type.id}
-                            onClick={() => setMissingType(type.id)}
-                            className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                              missingType === type.id 
-                                ? "bg-amber-500 border-amber-500 text-white" 
-                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                            }`}
-                          >
-                            {type.label}
-                          </button>
-                        ))}
+                {/* Lịch làm việc liên quan & Chi tiết ca */}
+                {requestCategory !== 'fulltime' && requestCategory !== 'nghiviec' && (
+                  <div className="space-y-4">
+                    {/* Báo cáo/Kiểm tra lịch của bản thân */}
+                    {userSchedules.length > 0 ? (
+                      <div>
+                        <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">
+                          Ca làm việc của bạn trong lịch ({userSchedules.length} ca)
+                        </label>
+                        <select 
+                          value={selectedSourceShift}
+                          onChange={(e) => setSelectedSourceShift(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          {userSchedules.map(s => (
+                            <option key={s.MaCaLam} value={s.MaCaLam}>
+                              {s.TenCaLam} ({s.GioBatDau} - {s.GioKetThuc})
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        {(missingType === "both" || missingType === "checkin") && (
+                    ) : (
+                      requestCategory !== 'bosung' && (
+                        <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl">
+                          Bạn không có lịch làm việc trong ngày này. Vui lòng chọn ngày khác hoặc liên hệ Quản lý.
+                        </div>
+                      )
+                    )}
+
+                    {/* Bổ sung công: Cho phép chọn ca ngoài lịch */}
+                    {requestCategory === 'bosung' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <input 
+                            type="checkbox" 
+                            id="outsideShiftCheck"
+                            checked={isOutsideShift || userSchedules.length === 0}
+                            disabled={userSchedules.length === 0}
+                            onChange={(e) => setIsOutsideShift(e.target.checked)}
+                            className="rounded border-slate-350 text-amber-500 focus:ring-amber-500 w-4 h-4"
+                          />
+                          <label htmlFor="outsideShiftCheck" className="text-xs font-bold text-slate-650 dark:text-zinc-300 select-none">
+                            Làm ca ngoài lịch (Tăng ca / Hỗ trợ)
+                          </label>
+                        </div>
+
+                        {(isOutsideShift || userSchedules.length === 0) && (
                           <div>
-                            <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Vào (Check-in)</label>
-                            <input 
-                              type="time" 
-                              value={missingTimeIn}
-                              onChange={(e) => setMissingTimeIn(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none"
-                              required
-                            />
+                            <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">
+                              Chọn ca làm việc tiêu chuẩn
+                            </label>
+                            <select 
+                              value={missingShift}
+                              onChange={(e) => setMissingShift(e.target.value)}
+                              className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            >
+                              {standardShifts.map(s => (
+                                <option key={s.MaCaLam} value={s.MaCaLam}>
+                                  {s.TenCaLam} ({s.GioBatDau} - {s.GioKetThuc})
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         )}
-                        {(missingType === "both" || missingType === "checkout") && (
+
+                        {/* Điền thông tin check-in / check-out */}
+                        <div>
+                          <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Thông tin bổ sung</label>
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            {[
+                              { id: "both", label: "Cả In & Out" },
+                              { id: "checkin", label: "Giờ Check-in" },
+                              { id: "checkout", label: "Giờ Check-out" }
+                            ].map((type) => (
+                              <button
+                                type="button"
+                                key={type.id}
+                                onClick={() => setMissingType(type.id)}
+                                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                                  missingType === type.id 
+                                    ? "bg-amber-500 border-amber-500 text-white" 
+                                    : "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                }`}
+                              >
+                                {type.label}
+                              </button>
+                            ))}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            {(missingType === "both" || missingType === "checkin") && (
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Vào (Check-in)</label>
+                                <input 
+                                  type="time" 
+                                  value={missingTimeIn}
+                                  onChange={(e) => setMissingTimeIn(e.target.value)}
+                                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none"
+                                  required
+                                />
+                              </div>
+                            )}
+                            {(missingType === "both" || missingType === "checkout") && (
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Ra (Check-out)</label>
+                                <input 
+                                  type="time" 
+                                  value={missingTimeOut}
+                                  onChange={(e) => setMissingTimeOut(e.target.value)}
+                                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 px-3.5 py-2 rounded-xl text-sm font-bold text-slate-800 dark:text-white focus:outline-none"
+                                  required
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Đổi ca: Chọn hình thức đổi và thông tin ca đích */}
+                    {requestCategory === 'doica' && userSchedules.length > 0 && (
+                      <div className="space-y-3 p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-850 rounded-2xl">
+                        <div>
+                          <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-2">Hình thức đổi ca</label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSwapType("self_swap")}
+                              className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition-colors ${
+                                swapType === "self_swap" 
+                                  ? "bg-amber-500 border-amber-500 text-white" 
+                                  : "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+                              }`}
+                            >
+                              Đổi sang ca khác của bản thân
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSwapType("peer_swap")}
+                              className={`py-1.5 px-3 rounded-lg border text-xs font-bold transition-colors ${
+                                swapType === "peer_swap" 
+                                  ? "bg-amber-500 border-amber-500 text-white" 
+                                  : "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400"
+                              }`}
+                            >
+                              Đổi ca với nhân viên khác
+                            </button>
+                          </div>
+                        </div>
+
+                        {swapType === "self_swap" ? (
                           <div>
-                            <label className="text-xs font-bold text-slate-500 mb-1 block">Giờ Ra (Check-out)</label>
-                            <input 
-                              type="time" 
-                              value={missingTimeOut}
-                              onChange={(e) => setMissingTimeOut(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none"
-                              required
-                            />
+                            <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Chọn ca muốn đổi sang</label>
+                            <select 
+                              value={selectedTargetShift}
+                              onChange={(e) => setSelectedTargetShift(e.target.value)}
+                              className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none text-slate-800 dark:text-white"
+                            >
+                              <option value="">-- Chọn ca làm --</option>
+                              {standardShifts
+                                .filter(s => !userSchedules.some(us => us.MaCaLam === s.MaCaLam))
+                                .map(s => (
+                                  <option key={s.MaCaLam} value={s.MaCaLam}>
+                                    {s.TenCaLam} ({s.GioBatDau} - {s.GioKetThuc})
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Chọn nhân viên muốn đổi cùng</label>
+                              <select 
+                                value={selectedSwapEmp}
+                                onChange={(e) => setSelectedSwapEmp(e.target.value)}
+                                className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none text-slate-800 dark:text-white"
+                              >
+                                <option value="">-- Chọn nhân viên --</option>
+                                {employeeList.map(emp => (
+                                  <option key={emp.MaNhanVien} value={emp.MaNhanVien}>
+                                    {emp.HoTen} ({emp.ChucVu})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {selectedSwapEmp && (
+                              <div>
+                                <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Chọn ca của nhân viên đó để đổi</label>
+                                {targetEmpSchedules.length > 0 ? (
+                                  <select 
+                                    value={selectedTargetShift}
+                                    onChange={(e) => setSelectedTargetShift(e.target.value)}
+                                    className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-3 py-2 rounded-xl text-xs font-bold focus:outline-none text-slate-800 dark:text-white"
+                                  >
+                                    <option value="">-- Chọn ca làm --</option>
+                                    {targetEmpSchedules.map(s => (
+                                      <option key={s.MaCaLam} value={s.MaCaLam}>
+                                        {s.TenCaLam} ({s.GioBatDau} - {s.GioKetThuc})
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="text-xs text-rose-500 font-bold p-2 bg-rose-50 border border-rose-100 rounded-lg">
+                                    Nhân viên này không được phân ca nào trong ngày này.
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    </div>
-                  </>
-                )}
-
-                {requestCategory === 'doica' && (
-                  <div>
-                    <label className="text-xs font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1.5">Bạn muốn đổi với ai / sang ca nào?</label>
-                    <input 
-                      type="text" 
-                      value={targetSwapShift}
-                      onChange={(e) => setTargetSwapShift(e.target.value)}
-                      placeholder="VD: Đổi sang ca Chiều thứ 4 với bạn A"
-                      className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      required
-                    />
+                    )}
                   </div>
                 )}
 
@@ -1330,8 +1688,12 @@ export default function Home() {
                       "Lỗi máy chấm công", "Quên quẹt vân tay", "Đi tiếp khách"
                     ] : requestCategory === 'xinnghi' ? [
                       "Bận việc gia đình", "Ốm đau / Khám bệnh", "Việc cá nhân đột xuất"
-                    ] : [
+                    ] : requestCategory === 'doica' ? [
                       "Bận lịch học", "Kẹt xe / Xe hỏng", "Nhờ bạn làm thay"
+                    ] : requestCategory === 'fulltime' ? [
+                      "Muốn cống hiến lâu dài", "Đã thu xếp được lịch", "Đủ điều kiện thời gian"
+                    ] : [
+                      "Lý do cá nhân", "Chuyển nơi cư trú", "Tập trung học tập"
                     ]).map((chip) => (
                       <button
                         type="button"
@@ -1348,7 +1710,7 @@ export default function Home() {
                 {/* Submit button */}
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || ((requestCategory === 'xinnghi' || requestCategory === 'doica') && userSchedules.length === 0)}
                   className="w-full py-3 bg-sky-500 hover:bg-sky-600 disabled:bg-sky-300 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg mt-4"
                 >
                   <Send className="w-4 h-4" />

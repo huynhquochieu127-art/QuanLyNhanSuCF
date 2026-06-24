@@ -212,6 +212,17 @@ export default function Timekeeping() {
 
   const isManager = employee.role === "1" || employee.role === "2";
 
+  const filteredRequests = allRequests.filter(req => {
+    // Nếu là Manager (2), ẩn đơn xin chuyển Full-time
+    if (employee.role === "2") {
+      const loaiLower = req.Loai ? req.Loai.toLowerCase() : '';
+      if (loaiLower.includes('full-time') || loaiLower.includes('fulltime') || loaiLower.includes('chuyển full')) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-200">
       <header className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-10">
@@ -230,7 +241,50 @@ export default function Timekeeping() {
         </div>
       </header>
 
-      {/* TAB BAR ẨN - chỉ còn tab Chấm Công cá nhân */}
+      {/* TABS FOR MANAGER/ADMIN */}
+      {isManager && (
+        <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex gap-8">
+              <button
+                onClick={() => setActiveTab("personal")}
+                className={`py-4 text-sm font-bold border-b-2 transition-colors ${
+                  activeTab === "personal" 
+                    ? "border-amber-500 text-amber-600" 
+                    : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Cá Nhân
+              </button>
+              <button
+                onClick={() => setActiveTab("report")}
+                className={`py-4 text-sm font-bold border-b-2 transition-colors ${
+                  activeTab === "report" 
+                    ? "border-amber-500 text-amber-600" 
+                    : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Báo Cáo Điểm Danh
+              </button>
+              <button
+                onClick={() => setActiveTab("requests")}
+                className={`py-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+                  activeTab === "requests" 
+                    ? "border-amber-500 text-amber-600" 
+                    : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Duyệt Yêu Cầu
+                {filteredRequests.filter(r => r.TrangThai === 'pending').length > 0 && (
+                  <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {filteredRequests.filter(r => r.TrangThai === 'pending').length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto p-4 py-8">
         {/* TAB 1: PERSONAL TIMEKEEPING */}
@@ -409,10 +463,10 @@ export default function Timekeeping() {
           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-slate-200 dark:border-zinc-800 p-6">
             <h2 className="text-xl font-black text-slate-900 dark:text-white mb-6">Duyệt Yêu Cầu Nhân Sự</h2>
             <div className="grid gap-4">
-              {allRequests.length === 0 ? (
+              {filteredRequests.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 font-medium">Chưa có yêu cầu nào</div>
               ) : (
-                allRequests.map((req) => (
+                filteredRequests.map((req) => (
                   <div key={req.MaYeuCau} className="bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700 rounded-2xl p-4 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-3 mb-1">

@@ -200,6 +200,17 @@ export default function ShiftScheduling() {
     }
   };
 
+  const handleAdminReopen = async () => {
+    try {
+      const { startStr } = getWeekRange();
+      await axios.put(`${API}/shifts/week-status/${startStr}`, { status: 'reopened' });
+      toast.success("Đã mở lại cổng đăng ký tuần!");
+      fetchRegistrations();
+    } catch (e) {
+      toast.error("Lỗi mở lại đăng ký tuần");
+    }
+  };
+
   const handleApproveReg = async (id, status) => {
     try {
       const res = await axios.put(`${API}/shifts/register/${id}/status`, { TrangThai: status });
@@ -249,7 +260,7 @@ export default function ShiftScheduling() {
     
     if (isStaff) {
       if (weekStatus === 'open' && isPastDeadline()) return false;
-      return weekStatus === 'open' && myEmployeeId == emp.MaNhanVien;
+      return (weekStatus === 'open' || weekStatus === 'reopened') && myEmployeeId == emp.MaNhanVien;
     }
     return false;
   };
@@ -265,7 +276,7 @@ export default function ShiftScheduling() {
     const canClick = getCanClick(emp);
     if (!canClick) return;
 
-    if (existingItem && existingItem.TrangThai !== "pending") {
+    if (existingItem && existingItem.TrangThai !== "pending" && weekStatus !== "reopened") {
       toast.error("Chỉ có thể thay đổi ca đang chờ duyệt");
       return;
     }
@@ -498,6 +509,7 @@ export default function ShiftScheduling() {
                           {isPastDeadline() && <span className="text-rose-600 ml-2 font-black">(Đã hết hạn đăng ký - Hạn cuối: 18h00 Chủ Nhật)</span>}
                         </>
                       )}
+                      {weekStatus === 'reopened' && <span className="text-amber-600">Đang mở lại đăng ký (Bởi Admin)</span>}
                       {weekStatus === 'manager_approved' && <span className="text-amber-600">Chờ Admin duyệt</span>}
                       {weekStatus === 'admin_approved' && <span className="text-emerald-600">Đã chốt lịch</span>}
                     </span>
@@ -509,14 +521,19 @@ export default function ShiftScheduling() {
                       <BellRing className="w-4 h-4" /> Mở đăng ký
                     </button>
                   )}
-                  {isManager && weekStatus === 'open' && (
+                  {isManager && (weekStatus === 'open' || weekStatus === 'reopened') && (
                     <button onClick={handleSubmitToAdmin} className="flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <Send className="w-4 h-4" /> Gửi bảng cho Admin duyệt
                     </button>
                   )}
-                  {isAdmin && weekStatus === 'manager_approved' && (
+                  {isAdmin && (weekStatus === 'manager_approved' || weekStatus === 'reopened') && (
                     <button onClick={handleAdminFinalize} className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <CheckCircle className="w-4 h-4" /> Chốt lịch làm việc
+                    </button>
+                  )}
+                  {isAdmin && weekStatus === 'admin_approved' && (
+                    <button onClick={handleAdminReopen} className="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
+                      <RefreshCw className="w-4 h-4" /> Mở lại đăng ký
                     </button>
                   )}
                   {isStaff && (

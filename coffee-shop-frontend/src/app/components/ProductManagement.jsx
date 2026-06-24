@@ -1,40 +1,142 @@
-import { useState } from "react";
-import { Search, Plus, Edit, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Plus, Edit, Trash2, X } from "lucide-react";
 import AdminLayout from "./AdminLayout";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-
-const initialProducts = [
-  { id: "PRD001", name: "Espresso", category: "Coffee", price: 3.5, image: "https://images.unsplash.com/photo-1593443320739-77f74939d0da?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD002", name: "Cappuccino", category: "Coffee", price: 4.5, image: "https://images.unsplash.com/photo-1615486780246-76e6bb33e8b5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD003", name: "Latte", category: "Coffee", price: 4.8, image: "https://images.unsplash.com/photo-1543233604-3baca4d35513?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwzfHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD004", name: "Americano", category: "Coffee", price: 3.8, image: "https://images.unsplash.com/photo-1511426420268-4cfdd3763b77?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw0fHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200", inStock: false },
-  { id: "PRD005", name: "Mocha", category: "Coffee", price: 5.2, image: "https://images.unsplash.com/photo-1489866492941-15d60bdaa7e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHw1fHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD006", name: "Croissant", category: "Bakery", price: 3.2, image: "https://images.unsplash.com/photo-1571157577110-493b325fdd3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcm9pc3NhbnQlMjBwYXN0cnklMjBiYWtlcnl8ZW58MXx8fHwxNzc5Mzc4NTU0fDA&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD007", name: "Muffin", category: "Bakery", price: 3.5, image: "https://images.unsplash.com/photo-1751151856149-5ebf1d21586a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxjcm9pc3NhbnQlMjBwYXN0cnklMjBiYWtlcnl8ZW58MXx8fHwxNzc5Mzc4NTU0fDA&ixlib=rb-4.1.0&q=80&w=200", inStock: true },
-  { id: "PRD008", name: "Brownie", category: "Bakery", price: 4.0, image: "https://images.unsplash.com/photo-1737700088850-d0b53f9d39ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwzfHxjcm9pc3NhbnQlMjBwYXN0cnklMjBiYWtlcnl8ZW58MXx8fHwxNzc5Mzc4NTU0fDA&ixlib=rb-4.1.0&q=80&w=200", inStock: false },
-];
+import axios from "axios";
+import { toast } from "sonner";
 
 export default function ProductManagement() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [productList, setProductList] = useState(initialProducts);
+  const [productList, setProductList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal states
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({
+    TenSanPham: '',
+    Gia: '',
+    MoTa: '',
+    CoBan: 1,
+    MaDanhMuc: 1
+  });
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get('http://localhost:5000/api/products');
+      if (res.data.success) {
+        const mapped = res.data.data.map(p => ({
+          id: p.MaSanPham,
+          name: p.TenSanPham,
+          price: parseFloat(p.Gia),
+          category: p.MaDanhMuc === 1 ? 'Coffee' : 'Bakery', // Tạm thời
+          image: p.MoTa || "https://images.unsplash.com/photo-1593443320739-77f74939d0da?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb2ZmZWUlMjBjdXAlMjBlc3ByZXNzbyUyMGxhdHRlfGVufDF8fHx8MTc3OTUwOTc4MXww&ixlib=rb-4.1.0&q=80&w=200",
+          inStock: p.CoBan === 1
+        }));
+        setProductList(mapped);
+      }
+    } catch (err) {
+      toast.error("Không thể tải danh sách sản phẩm");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const handleOpenModal = (product = null) => {
+    if (product) {
+      setEditingId(product.id);
+      setFormData({
+        TenSanPham: product.name,
+        Gia: product.price,
+        MoTa: product.image,
+        CoBan: product.inStock ? 1 : 0,
+        MaDanhMuc: product.category === 'Coffee' ? 1 : 2
+      });
+    } else {
+      setEditingId(null);
+      setFormData({ TenSanPham: '', Gia: '', MoTa: '', CoBan: 1, MaDanhMuc: 1 });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: type === 'checkbox' ? (checked ? 1 : 0) : value 
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingId) {
+        await axios.put(`http://localhost:5000/api/products/${editingId}`, formData);
+        toast.success("Cập nhật sản phẩm thành công");
+      } else {
+        await axios.post(`http://localhost:5000/api/products`, formData);
+        toast.success("Thêm sản phẩm thành công");
+      }
+      fetchProducts();
+      handleCloseModal();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi lưu sản phẩm");
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Bạn có chắc muốn xóa sản phẩm này?")) {
+      try {
+        await axios.delete(`http://localhost:5000/api/products/${id}`);
+        toast.success("Xóa sản phẩm thành công");
+        fetchProducts();
+      } catch (err) {
+        toast.error("Lỗi xóa sản phẩm");
+      }
+    }
+  };
+
+  const toggleStock = async (product) => {
+    try {
+      const newStatus = product.inStock ? 0 : 1;
+      await axios.put(`http://localhost:5000/api/products/${product.id}`, {
+        TenSanPham: product.name,
+        Gia: product.price,
+        MoTa: product.image,
+        CoBan: newStatus,
+        MaDanhMuc: product.category === 'Coffee' ? 1 : 2
+      });
+      // Cập nhật state trực tiếp cho nhanh
+      setProductList(productList.map(p => p.id === product.id ? { ...p, inStock: !p.inStock } : p));
+      toast.success("Đã cập nhật trạng thái kho");
+    } catch (err) {
+      toast.error("Lỗi cập nhật trạng thái");
+    }
+  };
 
   const filteredProducts = productList.filter(
     (product) =>
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.id.toLowerCase().includes(searchQuery.toLowerCase())
+      String(product.id).toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const toggleStock = (id) => {
-    setProductList(productList.map((p) => (p.id === id ? { ...p, inStock: !p.inStock } : p)));
-  };
 
   return (
     <AdminLayout>
-      <div className="p-6">
+      <div className="p-6 relative">
         <div className="mb-6">
-          <h1 className="text-3xl text-gray-800 mb-2">Product Management</h1>
-          <p className="text-gray-600">Manage your menu items and inventory</p>
+          <h1 className="text-3xl text-gray-800 mb-2">Quản lý Sản phẩm</h1>
+          <p className="text-gray-600">Quản lý thực đơn và trạng thái kho</p>
         </div>
 
         <div className="bg-white rounded-xl shadow-lg p-6">
@@ -45,13 +147,16 @@ export default function ProductManagement() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products..."
+                placeholder="Tìm sản phẩm..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
-            <button className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 text-white px-6 py-2 rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all shadow-md">
+            <button 
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 text-white px-6 py-2 rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all shadow-md"
+            >
               <Plus className="w-5 h-5" />
-              Add New Product
+              Thêm Sản phẩm
             </button>
           </div>
 
@@ -59,63 +164,121 @@ export default function ProductManagement() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-4 px-4 text-gray-700">Image</th>
-                  <th className="text-left py-4 px-4 text-gray-700">Product Name</th>
-                  <th className="text-left py-4 px-4 text-gray-700">Category</th>
-                  <th className="text-left py-4 px-4 text-gray-700">Price</th>
-                  <th className="text-left py-4 px-4 text-gray-700">Stock Status</th>
-                  <th className="text-center py-4 px-4 text-gray-700">Actions</th>
+                  <th className="text-left py-4 px-4 text-gray-700">Hình ảnh</th>
+                  <th className="text-left py-4 px-4 text-gray-700">Tên sản phẩm</th>
+                  <th className="text-left py-4 px-4 text-gray-700">Danh mục</th>
+                  <th className="text-left py-4 px-4 text-gray-700">Giá bán</th>
+                  <th className="text-left py-4 px-4 text-gray-700">Trạng thái</th>
+                  <th className="text-center py-4 px-4 text-gray-700">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => (
-                  <tr key={product.id} className="border-b border-gray-100 hover:bg-amber-50 transition-colors">
-                    <td className="py-4 px-4">
-                      <ImageWithFallback src={product.image} alt={product.name} className="w-16 h-16 rounded-lg object-cover shadow-sm" />
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-gray-800">{product.name}</div>
-                      <div className="text-xs text-gray-500">{product.id}</div>
-                    </td>
-                    <td className="py-4 px-4 text-gray-600">{product.category}</td>
-                    <td className="py-4 px-4 text-gray-800">${product.price.toFixed(2)}</td>
-                    <td className="py-4 px-4">
-                      <button
-                        onClick={() => toggleStock(product.id)}
-                        className="relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-                        style={{ backgroundColor: product.inStock ? "#10b981" : "#6b7280" }}
-                      >
-                        <span
-                          className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-                          style={{ transform: product.inStock ? "translateX(28px)" : "translateX(4px)" }}
-                        />
-                      </button>
-                      <span className="ml-3 text-sm text-gray-600">{product.inStock ? "In Stock" : "Out of Stock"}</span>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                          <Edit className="w-4 h-4" />
+                {loading ? (
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">Đang tải dữ liệu...</td></tr>
+                ) : filteredProducts.length === 0 ? (
+                  <tr><td colSpan="6" className="text-center py-8 text-gray-500">Chưa có sản phẩm nào.</td></tr>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <tr key={product.id} className="border-b border-gray-100 hover:bg-amber-50 transition-colors">
+                      <td className="py-4 px-4">
+                        <ImageWithFallback src={product.image} alt={product.name} className="w-16 h-16 rounded-lg object-cover shadow-sm" />
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="text-gray-800 font-medium">{product.name}</div>
+                        <div className="text-xs text-gray-500">SP{product.id}</div>
+                      </td>
+                      <td className="py-4 px-4 text-gray-600">{product.category}</td>
+                      <td className="py-4 px-4 text-gray-800 font-medium">{product.price.toLocaleString()} VNĐ</td>
+                      <td className="py-4 px-4">
+                        <button
+                          onClick={() => toggleStock(product)}
+                          className="relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none"
+                          style={{ backgroundColor: product.inStock ? "#10b981" : "#6b7280" }}
+                        >
+                          <span
+                            className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                            style={{ transform: product.inStock ? "translateX(28px)" : "translateX(4px)" }}
+                          />
                         </button>
-                        <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        <span className="ml-3 text-sm text-gray-600">{product.inStock ? "Còn hàng" : "Hết hàng"}</span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button 
+                            onClick={() => handleOpenModal(product)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(product.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-12 text-gray-500">No products found matching your search criteria.</div>
-          )}
-
-          <div className="mt-6 flex items-center justify-between text-sm text-gray-600">
-            <span>Showing {filteredProducts.length} of {productList.length} products</span>
-          </div>
         </div>
+
+        {/* Modal */}
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h2 className="text-xl font-bold text-gray-800">
+                  {editingId ? "Cập nhật Sản phẩm" : "Thêm Sản phẩm"}
+                </h2>
+                <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto">
+                <form id="productForm" onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tên sản phẩm *</label>
+                    <input type="text" name="TenSanPham" required value={formData.TenSanPham} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Giá bán (VNĐ) *</label>
+                    <input type="number" name="Gia" required value={formData.Gia} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Link Ảnh (Tùy chọn)</label>
+                    <input type="text" name="MoTa" value={formData.MoTa} onChange={handleInputChange} placeholder="URL hình ảnh..." className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label>
+                    <select name="MaDanhMuc" value={formData.MaDanhMuc} onChange={handleInputChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                      <option value={1}>Coffee</option>
+                      <option value={2}>Bakery</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4">
+                    <input type="checkbox" name="CoBan" id="CoBan" checked={formData.CoBan === 1} onChange={handleInputChange} className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500" />
+                    <label htmlFor="CoBan" className="text-sm font-medium text-gray-700">Còn hàng trong kho</label>
+                  </div>
+                </form>
+              </div>
+              
+              <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                <button type="button" onClick={handleCloseModal} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                  Hủy
+                </button>
+                <button type="submit" form="productForm" className="px-6 py-2 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 transition-all shadow-md">
+                  Lưu lại
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </AdminLayout>
   );

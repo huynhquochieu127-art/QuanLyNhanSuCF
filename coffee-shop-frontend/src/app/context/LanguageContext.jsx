@@ -56,6 +56,10 @@ const translations = {
     desc_timekeeping: "Check-in and attendance",
     desc_logs: "Activity audit trail",
     desc_login: "Admin authentication",
+    nav_payslip: "Payslip",
+    desc_payslip: "View your monthly payslip",
+    nav_missing_attendance: "Request Missing Attendance",
+    desc_missing_attendance: "Request correction for missing clock in/out",
 
     // POS Dashboard
     pos_terminal: "POS Terminal",
@@ -143,6 +147,10 @@ const translations = {
     desc_timekeeping: "Theo dõi giờ công, chuyên cần",
     desc_logs: "Lịch sử hoạt động hệ thống",
     desc_login: "Đăng nhập xác thực admin",
+    nav_payslip: "Phiếu lương",
+    desc_payslip: "Xem chi tiết phiếu lương hàng tháng",
+    nav_missing_attendance: "Bổ sung điểm danh",
+    desc_missing_attendance: "Yêu cầu bổ sung giờ vào/ra bị thiếu",
 
     // POS Dashboard
     pos_terminal: "Quầy Thu Ngân POS",

@@ -5,6 +5,7 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useLanguage } from "../context/LanguageContext";
+import axios from "axios";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,20 +15,37 @@ export default function Login() {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Smooth toast notification
-    const promise = new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.promise(promise, {
-      loading: t("login_loading"),
-      success: t("login_success"),
-      error: t("login_failed"),
-    });
+    try {
+      // Mode Đăng nhập
+      const promise = axios.post('http://localhost:5000/api/auth/login', {
+        Email: email,
+        MatKhau: password
+      });
 
-    setTimeout(() => {
-      navigate("/");
-    }, 1200);
+      toast.promise(promise, {
+        loading: t("login_loading") || "Đang xử lý...",
+        success: (res) => {
+          // Lưu token và thông tin user vào localStorage
+          localStorage.setItem('token', res.data.token);
+          localStorage.setItem('user', JSON.stringify(res.data.user));
+          
+          setTimeout(() => {
+            navigate("/");
+          }, 1000);
+
+          return res.data.message || t("login_success") || "Đăng nhập thành công!";
+        },
+        error: (err) => {
+          return err.response?.data?.message || t("login_failed") || "Đăng nhập thất bại!";
+        },
+      });
+
+    } catch (error) {
+      console.error("Lỗi xử lý form:", error);
+    }
   };
 
   return (
@@ -76,8 +94,12 @@ export default function Login() {
             >
               <Coffee className="w-8 h-8 text-white" />
             </motion.div>
-            <h1 className="text-3xl font-extrabold text-amber-900 dark:text-amber-500 tracking-tight mb-2">{t("login_title")}</h1>
-            <p className="text-amber-700/80 dark:text-amber-600">{t("login_sign_in")}</p>
+            <h1 className="text-3xl font-extrabold text-amber-900 dark:text-amber-500 tracking-tight mb-2">
+              {t("login_title")}
+            </h1>
+            <p className="text-amber-700/80 dark:text-amber-600">
+              {t("login_sign_in")}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl shadow-xl dark:shadow-black/40 border border-white/20 dark:border-zinc-800/40 p-8 space-y-5">
@@ -139,15 +161,6 @@ export default function Login() {
             >
               {t("login_btn")}
             </motion.button>
-
-            <div className="text-center pt-2">
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {t("login_no_account") + " "}
-                <Link to="/" className="font-semibold text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 hover:underline">
-                  {t("login_contact_admin")}
-                </Link>
-              </p>
-            </div>
           </form>
         </motion.div>
       </div>

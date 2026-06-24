@@ -342,6 +342,73 @@ const updateRequestStatus = async (req, res) => {
           );
         }
       }
+      
+      // 4. Xin nghỉ ca
+      else if (typeLower.includes('nghỉ ca')) {
+        const dateStr = new Date(request.Ngay).toISOString().split('T')[0];
+        
+        // Trích xuất mã ca làm từ tên ca làm trong yêu cầu
+        const caLamLower = request.CaLam ? request.CaLam.toLowerCase() : '';
+        let maCaLam = null;
+        
+        const [shifts] = await db.query('SELECT MaCaLam, TenCaLam FROM calam');
+        for (const s of shifts) {
+          if (caLamLower.includes(s.TenCaLam.toLowerCase())) {
+            maCaLam = s.MaCaLam;
+            break;
+          }
+        }
+        
+        if (maCaLam) {
+          await db.query(
+            "UPDATE phancanhanvien SET TrangThai = N'Nghỉ' WHERE MaNhanVien = ? AND NgayLam = ? AND MaCaLam = ?",
+            [request.MaNhanVien, dateStr, maCaLam]
+          );
+        }
+        
+        await db.query(
+          "INSERT INTO don_xin_nghi (MaNhanVien, NgayNghi, NgayNghiDen, LyDo, LoaiNghi, TrangThai, NgayTao) VALUES (?, ?, ?, ?, 'phep', 'approved', GETDATE())",
+          [request.MaNhanVien, dateStr, dateStr, request.LyDo || 'Xin nghỉ ca']
+        );
+      }
+      
+      // 5. Xin đổi ca
+      else if (typeLower.includes('đổi ca')) {
+        const dateStr = new Date(request.Ngay).toISOString().split('T')[0];
+        const swapInfo = request.ThoiGian;
+        
+        if (swapInfo && swapInfo.includes('|')) {
+          const parts = swapInfo.split('|');
+          const mode = parts[0];
+          
+          if (mode === 'self_swap') {
+            const sourceCa = parseInt(parts[1], 10);
+            const targetCa = parseInt(parts[2], 10);
+            
+            if (!isNaN(sourceCa) && !isNaN(targetCa)) {
+              await db.query(
+                "UPDATE phancanhanvien SET MaCaLam = ? WHERE MaNhanVien = ? AND NgayLam = ? AND MaCaLam = ?",
+                [targetCa, request.MaNhanVien, dateStr, sourceCa]
+              );
+            }
+          } else if (mode === 'peer_swap') {
+            const sourceCa = parseInt(parts[1], 10);
+            const targetCa = parseInt(parts[2], 10);
+            const targetEmp = parseInt(parts[3], 10);
+            
+            if (!isNaN(sourceCa) && !isNaN(targetCa) && !isNaN(targetEmp)) {
+              await db.query(
+                "UPDATE phancanhanvien SET MaNhanVien = ? WHERE MaNhanVien = ? AND NgayLam = ? AND MaCaLam = ?",
+                [targetEmp, request.MaNhanVien, dateStr, sourceCa]
+              );
+              await db.query(
+                "UPDATE phancanhanvien SET MaNhanVien = ? WHERE MaNhanVien = ? AND NgayLam = ? AND MaCaLam = ?",
+                [request.MaNhanVien, targetEmp, dateStr, targetCa]
+              );
+            }
+          }
+        }
+      }
     }
 
     res.json({ success: true, message: 'Đã cập nhật trạng thái yêu cầu' });
@@ -351,6 +418,50 @@ const updateRequestStatus = async (req, res) => {
   }
 };
 
+// Lấy lịch phân ca của một nhân viên trong ngày
+const getScheduledShifts = async (req, res) => {
+  try {
+    const { employeeId, date } = req.query;
+    if (!employeeId || !date) {
+      return res.status(400).json({ success: false, message: 'Thiếu mã nhân viên hoặc ngày' });
+    }
+    const query = `
+      SELECT p.MaPhanCa, p.MaCaLam, c.TenCaLam, c.GioBatDau, c.GioKetThuc
+      FROM phancanhanvien p
+      JOIN calam c ON p.MaCaLam = c.MaCaLam
+      WHERE p.MaNhanVien = ? AND p.NgayLam = ?
+    `;
+    const [rows] = await db.query(query, [employeeId, date]);
+    const formatted = rows.map(r => ({
+      ...r,
+      GioBatDau: formatTime(r.GioBatDau),
+      GioKetThuc: formatTime(r.GioKetThuc)
+    }));
+    res.json({ success: true, data: formatted });
+  } catch (error) {
+    console.error('Lỗi lấy lịch phân ca:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
+// Helper format time
+const formatTime = (timeVal) => {
+  if (!timeVal) return '';
+  if (timeVal instanceof Date) {
+    const hh = String(timeVal.getUTCHours()).padStart(2, '0');
+    const mm = String(timeVal.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  if (typeof timeVal === 'string') {
+    if (timeVal.includes('T')) {
+      const parts = timeVal.split('T')[1].split(':');
+      return `${parts[0]}:${parts[1]}`;
+    }
+    return timeVal.substring(0, 5);
+  }
+  return String(timeVal);
+};
+
 module.exports = {
   getAttendanceHistory,
   checkIn,
@@ -358,5 +469,6 @@ module.exports = {
   getTodayStatus,
   submitRequest,
   getRequests,
-  updateRequestStatus
+  updateRequestStatus,
+  getScheduledShifts
 };

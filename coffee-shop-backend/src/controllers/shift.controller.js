@@ -331,6 +331,18 @@ const updateWeekStatus = async (req, res) => {
       thongBao = `Quản lý đã mở đăng ký ca cho tuần ${week}. Hạn đăng ký đến 18h00 Chủ Nhật tuần này. Quá hạn sẽ không thể đăng ký!`;
     } else if (status === 'manager_approved') {
       thongBao = `Quản lý đã duyệt sơ bộ và gửi bảng đăng ký ca tuần ${week} cho Admin duyệt.`;
+    } else if (status === 'reopened') {
+      const startDate = new Date(week);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+      
+      // Xóa các phân ca trong tuần đó khi mở lại đăng ký
+      await db.query('DELETE FROM phancanhanvien WHERE NgayLam >= ? AND NgayLam <= ?', [startStr, endStr]);
+      
+      thongBao = `Admin đã mở lại cổng đăng ký lịch làm việc cho tuần ${week}. Nhân viên có thể thực hiện đăng ký và thay đổi ca làm.`;
     }
 
     const [existing] = await db.query('SELECT * FROM trangthai_tuan WHERE MaTuan = ?', [week]);

@@ -28,9 +28,9 @@ export default function Login() {
       toast.promise(promise, {
         loading: t("login_loading") || "Đang xử lý...",
         success: (res) => {
-          // Lưu token và thông tin user vào localStorage
-          localStorage.setItem('token', res.data.token);
-          localStorage.setItem('user', JSON.stringify(res.data.user));
+          // Lưu token và thông tin user vào sessionStorage
+          sessionStorage.setItem('token', res.data.token);
+          sessionStorage.setItem('user', JSON.stringify(res.data.user));
           
           setTimeout(() => {
             navigate("/");

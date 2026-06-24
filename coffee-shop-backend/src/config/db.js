@@ -36,6 +36,7 @@ module.exports = {
     
     // 1. Rewrite MySQL-specific functions/constructs
     mssqlQuery = mssqlQuery.replace(/DATABASE\(\)/gi, 'DB_NAME()');
+    mssqlQuery = mssqlQuery.replace(/NOW\(\)/gi, 'GETDATE()');
     
     // 2. Translate parameter placeholders from '?' to '@p0', '@p1', etc.
     if (params && params.length > 0) {

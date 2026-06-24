@@ -1,5 +1,27 @@
 const db = require('../config/db');
 
+// Helper function to format time values to HH:mm
+const formatTime = (timeVal) => {
+  if (!timeVal) return '';
+  if (timeVal instanceof Date) {
+    const hours = String(timeVal.getUTCHours()).padStart(2, '0');
+    const minutes = String(timeVal.getUTCMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+  if (typeof timeVal === 'string') {
+    if (timeVal.includes('T')) {
+      const timePart = timeVal.split('T')[1];
+      const [h, m] = timePart.split(':');
+      return `${h}:${m}`;
+    }
+    const parts = timeVal.split(':');
+    if (parts.length >= 2) {
+      return `${parts[0]}:${parts[1]}`;
+    }
+  }
+  return timeVal;
+};
+
 // ============================================================
 // CA LÀM (calam) - CRUD
 // ============================================================
@@ -7,7 +29,12 @@ const db = require('../config/db');
 const getShifts = async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM calam ORDER BY GioBatDau ASC');
-    res.json({ success: true, data: rows });
+    const formatted = rows.map(r => ({
+      ...r,
+      GioBatDau: formatTime(r.GioBatDau),
+      GioKetThuc: formatTime(r.GioKetThuc)
+    }));
+    res.json({ success: true, data: formatted });
   } catch (error) {
     console.error('Lỗi khi lấy danh sách ca làm:', error);
     res.status(500).json({ success: false, message: 'Lỗi server' });
@@ -27,7 +54,13 @@ const createShift = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Tạo ca làm thành công',
-      data: { MaCaLam: result.insertId, TenCaLam, GioBatDau, GioKetThuc, MoTa }
+      data: { 
+        MaCaLam: result.insertId, 
+        TenCaLam, 
+        GioBatDau: formatTime(GioBatDau), 
+        GioKetThuc: formatTime(GioKetThuc), 
+        MoTa 
+      }
     });
   } catch (error) {
     console.error('Lỗi khi tạo ca làm:', error);
@@ -88,7 +121,12 @@ const getSchedule = async (req, res) => {
     }
     query += ' ORDER BY p.NgayLam ASC, c.GioBatDau ASC';
     const [rows] = await db.query(query, params);
-    res.json({ success: true, data: rows });
+    const formatted = rows.map(r => ({
+      ...r,
+      GioBatDau: formatTime(r.GioBatDau),
+      GioKetThuc: formatTime(r.GioKetThuc)
+    }));
+    res.json({ success: true, data: formatted });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
@@ -158,7 +196,12 @@ const getShiftRegistrations = async (req, res) => {
     }
     query += ' ORDER BY d.NgayLam ASC, c.GioBatDau ASC';
     const [rows] = await db.query(query, params);
-    res.json({ success: true, data: rows });
+    const formatted = rows.map(r => ({
+      ...r,
+      GioBatDau: formatTime(r.GioBatDau),
+      GioKetThuc: formatTime(r.GioKetThuc)
+    }));
+    res.json({ success: true, data: formatted });
   } catch (error) {
     console.error('Lỗi lấy đăng ký ca:', error);
     res.status(500).json({ success: false, message: 'Lỗi server' });
@@ -213,9 +256,9 @@ const cancelRegistration = async (req, res) => {
 const updateRegistrationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'approved' hoặc 'rejected'
+    const status = req.body.status || req.body.TrangThai; // Accept both status and TrangThai keys
     if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ' });
+      return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ: ' + status });
     }
     await db.query('UPDATE dangky_ca SET TrangThai = ? WHERE MaDangKy = ?', [status, id]);
     res.json({ success: true, message: status === 'approved' ? 'Đã duyệt đăng ký ca' : 'Đã từ chối đăng ký ca' });
@@ -243,10 +286,12 @@ const updateSetting = async (req, res) => {
     const { key, value } = req.body;
     if (!key) return res.status(400).json({ success: false, message: 'Thiếu key' });
     
-    await db.query(
-      'INSERT INTO cauhinh (Khoa, GiaTri) VALUES (?, ?) ON DUPLICATE KEY UPDATE GiaTri = ?',
-      [key, value, value]
-    );
+    const [existing] = await db.query('SELECT * FROM cauhinh WHERE Khoa = ?', [key]);
+    if (existing.length > 0) {
+      await db.query('UPDATE cauhinh SET GiaTri = ? WHERE Khoa = ?', [value, key]);
+    } else {
+      await db.query('INSERT INTO cauhinh (Khoa, GiaTri) VALUES (?, ?)', [key, value]);
+    }
     res.json({ success: true, message: 'Cập nhật cài đặt thành công' });
   } catch (error) {
     console.error('Lỗi cập nhật cài đặt:', error);
@@ -283,15 +328,17 @@ const updateWeekStatus = async (req, res) => {
     // Tạo thông báo nếu trạng thái thay đổi
     let thongBao = '';
     if (status === 'open') {
-      thongBao = `Quản lý đã mở đăng ký ca cho tuần ${week}. Vui lòng vào đăng ký ca làm việc!`;
+      thongBao = `Quản lý đã mở đăng ký ca cho tuần ${week}. Hạn đăng ký đến 18h00 Chủ Nhật tuần này. Quá hạn sẽ không thể đăng ký!`;
     } else if (status === 'manager_approved') {
       thongBao = `Quản lý đã duyệt sơ bộ và gửi bảng đăng ký ca tuần ${week} cho Admin duyệt.`;
     }
 
-    await db.query(
-      'INSERT INTO trangthai_tuan (MaTuan, TrangThai) VALUES (?, ?) ON DUPLICATE KEY UPDATE TrangThai = ?',
-      [week, status, status]
-    );
+    const [existing] = await db.query('SELECT * FROM trangthai_tuan WHERE MaTuan = ?', [week]);
+    if (existing.length > 0) {
+      await db.query('UPDATE trangthai_tuan SET TrangThai = ? WHERE MaTuan = ?', [status, week]);
+    } else {
+      await db.query('INSERT INTO trangthai_tuan (MaTuan, TrangThai) VALUES (?, ?)', [week, status]);
+    }
 
     if (thongBao) {
       await db.query('INSERT INTO thongbao (TieuDe, NoiDung, Loai) VALUES (?, ?, ?)', [
@@ -312,10 +359,12 @@ const finalizeWeek = async (req, res) => {
     if (!week) return res.status(400).json({ success: false, message: 'Thiếu mã tuần' });
 
     // 1. Cập nhật trạng thái tuần thành admin_approved
-    await db.query(
-      'INSERT INTO trangthai_tuan (MaTuan, TrangThai) VALUES (?, ?) ON DUPLICATE KEY UPDATE TrangThai = ?',
-      [week, 'admin_approved', 'admin_approved']
-    );
+    const [existingWeek] = await db.query('SELECT * FROM trangthai_tuan WHERE MaTuan = ?', [week]);
+    if (existingWeek.length > 0) {
+      await db.query('UPDATE trangthai_tuan SET TrangThai = ? WHERE MaTuan = ?', ['admin_approved', week]);
+    } else {
+      await db.query('INSERT INTO trangthai_tuan (MaTuan, TrangThai) VALUES (?, ?)', [week, 'admin_approved']);
+    }
 
     // Tính ngày bắt đầu và kết thúc của tuần dựa vào mã tuần (VD: '2026-06-22')
     const startDate = new Date(week);
@@ -337,22 +386,16 @@ const finalizeWeek = async (req, res) => {
 
     // 4. Insert vào phancanhanvien
     if (approvedRegistrations.length > 0) {
-      const values = approvedRegistrations.map(r => [
-        r.MaNhanVien,
-        r.MaCaLam,
-        r.NgayLam,
-        'Chưa làm',
-        r.GhiChu || ''
-      ]);
-
-      await db.query(
-        'INSERT INTO phancanhanvien (MaNhanVien, MaCaLam, NgayLam, TrangThai, GhiChu) VALUES ?',
-        [values]
-      );
+      for (const r of approvedRegistrations) {
+        await db.query(
+          'INSERT INTO phancanhanvien (MaNhanVien, MaCaLam, NgayLam, TrangThai, GhiChu) VALUES (?, ?, ?, ?, ?)',
+          [r.MaNhanVien, r.MaCaLam, r.NgayLam, 'Chưa làm', r.GhiChu || '']
+        );
+      }
     }
 
     // 5. Gửi thông báo chốt lịch
-    const thongBao = `Admin đã CHỐT lịch làm việc chính thức cho tuần ${week}. Vui lòng kiểm tra lịch làm việc của bạn.`;
+    const thongBao = `Lịch làm tuần này của bạn đã được duyệt. Vui lòng vào kiểm tra! (Tuần ${week})`;
     await db.query('INSERT INTO thongbao (TieuDe, NoiDung, Loai) VALUES (?, ?, ?)', [
       'Lịch làm việc chính thức', thongBao, 'success'
     ]);

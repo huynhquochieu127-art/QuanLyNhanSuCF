@@ -1,18 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Coffee, Users, Package, Star, FileText, Calendar, Clock, ShoppingCart, Home, Sun, Moon, Menu, X } from "lucide-react";
+import { 
+  Coffee, Users, Package, Star, FileText, Calendar, Clock, ShoppingCart, Home, 
+  Sun, Moon, Menu, X, Bell, Search, ChevronDown, LogOut, Settings, Globe, DollarSign 
+} from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
 import axios from "axios";
 
 const menuItems = [
   { path: "/", label: "Home", key: "home", icon: Home },
-  { path: "/pos", label: "POS", key: "pos", icon: ShoppingCart },
   { path: "/employees", label: "Employees", key: "employees", icon: Users },
   { path: "/products", label: "Products", key: "products", icon: Package },
   { path: "/customers", label: "Customers", key: "customers", icon: Star },
   { path: "/scheduling", label: "Scheduling", key: "scheduling", icon: Calendar },
-  { path: "/timekeeping", label: "Timekeeping", key: "timekeeping", icon: Clock },
+  { path: "/shift-management", label: "Shift Management", key: "shift_management", icon: Clock },
+  { path: "/payroll", label: "Payroll", key: "payroll", icon: DollarSign },
   { path: "/logs", label: "System Logs", key: "logs", icon: FileText },
 ];
 
@@ -22,14 +25,35 @@ export default function AdminLayout({ children }) {
   const { theme, toggleTheme } = useTheme();
   const { language, toggleLanguage, t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // Lấy thông tin user từ localStorage
+  // Scroll effect for header glassmorphism
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 10);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/notifications');
+        if (res.data.success) {
+          setNotifications(res.data.data);
+        }
+      } catch(e) {}
+    };
+    fetchNotifs();
+  }, []);
+
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
-  const userName = user ? user.HoTen : t("admin_user");
-  const userEmail = user ? user.Email : "admin@shop.com";
+  const userName = user ? user.HoTen : t("admin_user") || "Admin User";
   
-  // Hàm lấy chữ viết tắt
   const getInitials = (name) => {
     if (!name) return "AD";
     const parts = name.split(" ");
@@ -40,15 +64,12 @@ export default function AdminLayout({ children }) {
   };
   const userInitials = user ? getInitials(user.HoTen) : "AD";
 
-  // Hàm đăng xuất
   const handleLogout = async () => {
     try {
       const token = localStorage.getItem('token');
       if (token) {
         await axios.post('http://localhost:5000/api/auth/logout', {}, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+          headers: { Authorization: `Bearer ${token}` }
         });
       }
     } catch (err) {
@@ -60,199 +81,236 @@ export default function AdminLayout({ children }) {
     }
   };
 
-  const SidebarContent = () => {
-    const userRole = user ? String(user.MaVaiTro) : null;
+  const userRole = user ? String(user.MaVaiTro) : null;
+  const allowedMenuItems = menuItems.filter(item => {
+    if (!userRole) return item.path === "/";
+    if (userRole === "3") {
+      const restricted = ["/employees", "/products", "/shift-management", "/logs"];
+      return !restricted.includes(item.path);
+    }
+    if (userRole === "2") {
+      return item.path !== "/logs";
+    }
+    return true;
+  });
 
-    // Lọc các mục menu hiển thị dựa trên vai trò của người dùng
-    const allowedMenuItems = menuItems.filter(item => {
-      if (!userRole) return item.path === "/"; // Chưa đăng nhập chỉ xem Home
+  // Get current page title
+  const currentMenuItem = menuItems.find(i => i.path === location.pathname);
+  const pageTitle = currentMenuItem ? t(`nav_${currentMenuItem.key}`) : "Dashboard";
 
-      if (userRole === "3") {
-        // Nhân viên (Staff): ẩn nhân sự, quản lý kho, lịch làm việc, log hệ thống
-        const restricted = ["/employees", "/products", "/scheduling", "/logs"];
-        return !restricted.includes(item.path);
-      }
-
-      if (userRole === "2") {
-        // Quản lý (Manager): ẩn log hệ thống
-        return item.path !== "/logs";
-      }
-
-      return true; // Admin (1): xem tất cả
-    });
-
-    return (
-      <div className="flex flex-col h-full bg-slate-900 dark:bg-zinc-950 text-white">
-        {/* Header logo */}
-        <div className="p-6 border-b border-slate-800 dark:border-zinc-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center shadow-lg">
-              <Coffee className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold tracking-wide">Coffee Shop</h2>
-              <p className="text-xs text-amber-500 font-medium">{t("admin_portal")}</p>
-            </div>
-          </div>
+  const Sidebar = () => (
+    <div className="flex flex-col h-full bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-zinc-100 transition-colors duration-300">
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-6 h-20 border-b border-slate-200 dark:border-zinc-800 shrink-0">
+        <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
+          <Coffee className="w-6 h-6 text-white" />
         </div>
-
-        {/* Navigation links */}
-        <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
-          {allowedMenuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                  isActive
-                    ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-950/20"
-                    : "text-slate-400 hover:bg-slate-800/60 dark:hover:bg-zinc-900 hover:text-white"
-                }`}
-              >
-                <Icon className={`w-5 h-5 transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} />
-                <span className="font-medium text-sm">{t(`nav_${item.key}`)}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Footer controls & Profile */}
-        <div className="p-4 border-t border-slate-800 dark:border-zinc-800 space-y-2">
-          {/* Language Toggle */}
-          <button
-            onClick={toggleLanguage}
-            className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-base">🌐</span>
-              <span className="text-sm font-medium">{t("lang_switcher")}</span>
-            </div>
-            <span className="text-xs bg-slate-700 dark:bg-zinc-800 px-2.5 py-1 rounded-full text-slate-400 font-bold">
-              {language === "en" ? "EN" : "VI"}
-            </span>
-          </button>
-
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-800/50 dark:bg-zinc-900/50 hover:bg-slate-800 dark:hover:bg-zinc-900 transition-colors text-slate-300 hover:text-white"
-          >
-            <div className="flex items-center gap-3">
-              {theme === "dark" ? (
-                <>
-                  <Sun className="w-5 h-5 text-amber-500 animate-pulse" />
-                  <span className="text-sm font-medium">{t("theme_light")}</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-5 h-5 text-indigo-400" />
-                  <span className="text-sm font-medium">{t("theme_dark")}</span>
-                </>
-              )}
-            </div>
-          </button>
-
-          {/* Profile */}
-          <div className="flex items-center gap-3 px-3 pt-2">
-            <div className="w-10 h-10 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-sm font-bold shadow-md shadow-orange-900/10">
-              {userInitials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate text-slate-200">{userName}</p>
-              <p className="text-xs text-slate-400 truncate">{userEmail}</p>
-            </div>
-          </div>
-
-          {/* Nút Đăng nhập / Đăng xuất */}
-          <div className="pt-2">
-            {user ? (
-              <button
-                onClick={handleLogout}
-                className="flex items-center justify-between w-full px-4 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/40 transition-colors text-red-400 hover:text-red-300 font-bold"
-              >
-                <span className="text-sm">{t("logout") || "Đăng xuất"}</span>
-                <span className="text-xs">🚪</span>
-              </button>
-            ) : (
-              <Link
-                to="/login"
-                className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-amber-600/85 hover:bg-amber-600 transition-colors text-white font-bold text-center"
-              >
-                <span className="text-sm mx-auto">{t("login_btn") || "Đăng nhập"}</span>
-              </Link>
-            )}
-          </div>
+        <div className="flex flex-col">
+          <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300">
+            Coffee Shop
+          </span>
+          <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-500 uppercase tracking-wider">
+            {t("admin_portal") || "Management"}
+          </span>
         </div>
       </div>
-    );
-  };
+
+      {/* Nav Menu */}
+      <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1 custom-scrollbar">
+        <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-4 px-2 uppercase tracking-wider">
+          {t("menu") || "Menu"}
+        </div>
+        {allowedMenuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.path;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group relative ${
+                isActive 
+                  ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-500 font-semibold" 
+                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-900 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              {isActive && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+              )}
+              <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? "scale-110" : "group-hover:scale-110"}`} />
+              <span className="text-sm">{t(`nav_${item.key}`) || item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Sidebar Footer */}
+      <div className="p-4 border-t border-slate-200 dark:border-zinc-800 shrink-0">
+        <div className="bg-slate-50 dark:bg-zinc-900 rounded-2xl p-4 flex flex-col gap-3 border border-slate-100 dark:border-zinc-800/50">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="relative shrink-0">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold shadow-md">
+                {userInitials}
+              </div>
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full"></div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{userName}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userRole === "1" ? "Administrator" : "Staff"}</p>
+            </div>
+          </div>
+          
+          {user ? (
+            <button 
+              onClick={handleLogout}
+              className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-sm font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>{t("logout") || "Sign out"}</span>
+            </button>
+          ) : (
+            <Link 
+              to="/login"
+              className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors text-sm font-medium shadow-md shadow-amber-500/20"
+            >
+              <span>{t("login_btn") || "Login"}</span>
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 transition-colors duration-300 overflow-hidden">
-      {/* Mobile Top Bar */}
-      <header className="md:hidden flex items-center justify-between px-6 py-4 bg-slate-900 text-white shadow-md z-40">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
-            <Coffee className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold tracking-wide">{t("admin_portal")}</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={toggleLanguage}
-            className="text-xs bg-slate-800 active:bg-slate-750 px-2 py-1 rounded text-slate-300 font-bold"
-          >
-            {language === "en" ? "EN" : "VI"}
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="p-2 text-slate-300 hover:text-white rounded-lg transition-colors"
-          >
-            {theme === "dark" ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-indigo-300" />}
-          </button>
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="p-2 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-        </div>
-      </header>
-
-      {/* Desktop Sidebar (Persistent) */}
-      <aside className="hidden md:block w-66 h-full shadow-2xl flex-shrink-0 z-30">
-        <SidebarContent />
+    <div className="min-h-screen flex bg-slate-50 dark:bg-[#09090b] text-slate-800 dark:text-zinc-100 transition-colors duration-300 font-sans selection:bg-amber-500/30">
+      
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:block w-72 h-screen sticky top-0 z-30 shrink-0">
+        <Sidebar />
       </aside>
 
-      {/* Mobile Sidebar (Drawer Overlay) */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
-          {/* Backdrop overlay */}
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
+          <div 
+            className="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm transition-opacity" 
             onClick={() => setMobileMenuOpen(false)}
           />
-
-          {/* Drawer content */}
-          <div className="relative flex flex-col w-72 max-w-xs h-full bg-slate-900 shadow-2xl z-50 animate-in slide-in-from-left duration-300">
-            {/* Close button inside Drawer */}
-            <button
+          <div className="relative w-[280px] h-full bg-white dark:bg-zinc-950 shadow-2xl animate-in slide-in-from-left z-50">
+            <button 
               onClick={() => setMobileMenuOpen(false)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-slate-850 rounded-lg transition-all"
+              className="absolute top-6 right-4 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
-            <SidebarContent />
+            <Sidebar />
           </div>
         </div>
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 h-full overflow-auto relative z-10">
-        {children}
+      <main className="flex-1 flex flex-col min-w-0 min-h-screen relative overflow-hidden">
+        
+        {/* Top Header */}
+        <header className={`sticky top-0 z-20 transition-all duration-300 ${
+          scrolled 
+            ? "bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-zinc-800 shadow-sm" 
+            : "bg-transparent border-b border-transparent"
+        }`}>
+          <div className="flex items-center justify-between px-4 sm:px-8 h-20">
+            
+            {/* Left side: Mobile menu & Page Title */}
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setMobileMenuOpen(true)}
+                className="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-300">
+                  {pageTitle}
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 hidden sm:block">
+                  {t("welcome_back") || "Welcome back,"} {userName}
+                </p>
+              </div>
+            </div>
+
+            {/* Right side: Actions */}
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* Search */}
+              <div className="hidden lg:flex items-center relative group">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 group-focus-within:text-amber-500 transition-colors" />
+                <input 
+                  type="text" 
+                  placeholder={t("search") || "Search..."}
+                  className="pl-9 pr-4 py-2 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 w-64 transition-all"
+                />
+              </div>
+
+              {/* Language Toggle */}
+              <button 
+                onClick={toggleLanguage}
+                className="p-2 sm:px-3 sm:py-2 rounded-full sm:rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-600 dark:text-slate-300 transition-all flex items-center gap-2"
+              >
+                <Globe className="w-5 h-5" />
+                <span className="text-sm font-semibold hidden sm:block">
+                  {language === "en" ? "EN" : "VI"}
+                </span>
+              </button>
+
+              {/* Theme Toggle */}
+              <button 
+                onClick={toggleTheme}
+                className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-600 dark:text-slate-300 relative overflow-hidden group"
+              >
+                <div className="relative z-10 flex items-center justify-center">
+                  {theme === "dark" ? (
+                    <Sun className="w-5 h-5 text-amber-500 group-hover:rotate-45 transition-transform duration-500" />
+                  ) : (
+                    <Moon className="w-5 h-5 text-indigo-500 group-hover:-rotate-12 transition-transform duration-500" />
+                  )}
+                </div>
+              </button>
+
+              {/* Notifications */}
+              <div className="relative">
+                <button onClick={() => setShowNotifications(!showNotifications)} className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-600 dark:text-slate-300 relative">
+                  <Bell className="w-5 h-5" />
+                  {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full animate-pulse"></span>}
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 overflow-hidden z-50">
+                    <div className="p-4 border-b border-slate-200 dark:border-zinc-800 font-bold text-slate-800 dark:text-white">
+                      Thông báo ({notifications.length})
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <p className="p-4 text-sm text-slate-500 text-center">Không có thông báo mới.</p>
+                      ) : notifications.map(n => (
+                        <div key={n.MaTB} className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer">
+                          <div className="font-bold text-sm text-slate-800 dark:text-white">{n.TieuDe}</div>
+                          <div className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{n.NoiDung}</div>
+                          <div className="text-[10px] text-slate-400 mt-2">{new Date(n.NgayTao).toLocaleString("vi-VN")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div className="flex-1 p-4 sm:p-8 overflow-auto">
+          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {children}
+          </div>
+        </div>
+
       </main>
     </div>
   );

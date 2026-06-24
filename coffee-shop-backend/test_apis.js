@@ -19,7 +19,7 @@ function get(path) {
       ['/api/discounts', 'Discounts'],
       ['/api/shifts/registrations', 'Shift Registrations'],
       ['/api/timekeeping/leave', 'Leave Requests'],
-      ['/api/timekeeping/monthly-sheet', 'Monthly Sheets'],
+      ['/api/timesheets?month=6&year=2026', 'Monthly Sheets'],
       ['/api/shifts', 'Shifts'],
       ['/api/employees', 'Employees'],
     ];

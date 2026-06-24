@@ -7,6 +7,7 @@ const getEmployees = async (req, res) => {
       SELECT n.*, t.Email, t.MaVaiTro, t.TrangThaiHoatDong 
       FROM nhanvien n
       LEFT JOIN taikhoan t ON n.MaNhanVien = t.MaTaiKhoan
+      WHERE t.MaVaiTro IS NULL OR t.MaVaiTro != 1
       ORDER BY n.MaNhanVien DESC
     `;
     const [rows] = await db.query(query);

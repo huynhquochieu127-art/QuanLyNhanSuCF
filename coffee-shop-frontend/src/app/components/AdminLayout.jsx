@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { 
   Coffee, Users, Package, Star, FileText, Calendar, Clock, ShoppingCart, Home, 
-  Sun, Moon, Menu, X, Bell, Search, ChevronDown, LogOut, Settings, Globe, DollarSign, LayoutList 
+  Sun, Moon, Menu, X, Bell, Search, ChevronDown, LogOut, Settings, Globe, DollarSign, LayoutList, FileEdit, CheckCircle2 
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -11,12 +11,14 @@ import axios from "axios";
 const menuItems = [
   { path: "/", label: "Home", key: "home", icon: Home },
   { path: "/employees", label: "Employees", key: "employees", icon: Users },
-  { path: "/customers", label: "Customers", key: "customers", icon: Star },
+  { path: "/timekeeping", label: "Timekeeping", key: "timekeeping", icon: CheckCircle2 },
   { path: "/scheduling", label: "Scheduling", key: "scheduling", icon: Calendar },
   { path: "/shift-management", label: "Shift Management", key: "shift_management", icon: Clock },
   { path: "/employee-timesheet", label: "Employee Timesheet", key: "employee_timesheet", icon: LayoutList },
   { path: "/my-timesheet", label: "My Timesheet", key: "my_timesheet", icon: LayoutList },
   { path: "/payroll", label: "Payroll", key: "payroll", icon: DollarSign },
+  { path: "/?modal=payslip", label: "Phiếu lương", key: "payslip", icon: DollarSign },
+  { path: "/?modal=missing-attendance", label: "Bổ sung điểm danh", key: "missing_attendance", icon: FileEdit },
   { path: "/logs", label: "System Logs", key: "logs", icon: FileText },
 ];
 
@@ -42,13 +44,20 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     const fetchNotifs = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/notifications');
+        const userStr = sessionStorage.getItem('user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        if (!user) return;
+
+        const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
         if (res.data.success) {
           setNotifications(res.data.data);
         }
       } catch(e) {}
     };
     fetchNotifs();
+    
+    const interval = setInterval(fetchNotifs, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const userStr = sessionStorage.getItem('user');
@@ -85,15 +94,19 @@ export default function AdminLayout({ children }) {
   const userRole = user ? String(user.MaVaiTro) : null;
   const allowedMenuItems = menuItems.filter(item => {
     if (!userRole) return item.path === "/";
+    if (userRole === "1") {
+      // Admin không có ca làm riêng, không duyệt công trực tiếp và không xếp ca (đã có quản lý làm)
+      const restricted = ["/my-timesheet", "/employee-timesheet", "/scheduling", "/?modal=payslip", "/?modal=missing-attendance"];
+      return !restricted.includes(item.path);
+    }
     if (userRole === "3") {
-      const restricted = ["/employees", "/shift-management", "/employee-timesheet", "/logs"];
+      const restricted = ["/employees", "/shift-management", "/employee-timesheet", "/logs", "/payroll"];
       return !restricted.includes(item.path);
     }
     if (userRole === "2") {
       // Quản lý xem được hết ngoại trừ log hệ thống và tính lương
-      return !["/logs", "/payroll"].includes(item.path);
+      return !["/logs", "/payroll", "/?modal=payslip", "/?modal=missing-attendance"].includes(item.path);
     }
-    // Admin xem được tất cả
     return true;
   });
 
@@ -125,7 +138,11 @@ export default function AdminLayout({ children }) {
         </div>
         {allowedMenuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+          const isActive = item.path.includes('?')
+            ? (location.pathname + location.search) === item.path
+            : item.path === "/" 
+              ? location.pathname === "/" && location.search === ""
+              : location.pathname === item.path;
           return (
             <Link
               key={item.path}
@@ -283,37 +300,47 @@ export default function AdminLayout({ children }) {
               <div className="relative">
                 <button onClick={() => setShowNotifications(!showNotifications)} className="p-2 sm:p-2.5 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all text-slate-600 dark:text-slate-300 relative">
                   <Bell className="w-5 h-5" />
-                  {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full animate-pulse"></span>}
+                  {notifications.some(n => n.TrangThaiDoc === 0) && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full animate-pulse"></span>}
                 </button>
                 {showNotifications && (
                   <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 overflow-hidden z-50">
                     <div className="p-4 border-b border-slate-200 dark:border-zinc-800 font-bold text-slate-800 dark:text-white">
-                      Thông báo ({notifications.length})
+                      Thông báo ({notifications.filter(n => n.TrangThaiDoc === 0).length})
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <p className="p-4 text-sm text-slate-500 text-center">Không có thông báo mới.</p>
                       ) : notifications.map(n => (
                         <div 
-                          key={n.MaTB} 
-                          onClick={() => {
+                          key={n.MaThongBao} 
+                          onClick={async () => {
                             setShowNotifications(false);
+                            try {
+                              await axios.put(`http://localhost:5000/api/notifications/${n.MaThongBao}/read`);
+                              setNotifications(prev => prev.map(item => item.MaThongBao === n.MaThongBao ? { ...item, TrangThaiDoc: 1 } : item));
+                            } catch (e) {
+                              console.error(e);
+                            }
                             const title = n.TieuDe.toLowerCase();
                             const content = n.NoiDung.toLowerCase();
                             if (title.includes("đăng ký") || title.includes("lịch") || content.includes("đăng ký") || content.includes("lịch")) {
                               const weekMatch = n.NoiDung.match(/\d{4}-\d{2}-\d{2}/);
                               const targetWeek = weekMatch ? weekMatch[0] : "";
+                              const isOfficial = title.includes("chính thức") || content.includes("chính thức") || title.includes("chốt lịch") || content.includes("chốt lịch");
+                              const targetTab = isOfficial ? "official" : "register";
                               if (targetWeek) {
-                                navigate(`/scheduling?week=${targetWeek}&tab=register`);
+                                navigate(`/scheduling?week=${targetWeek}&tab=${targetTab}`);
                               } else {
-                                navigate("/scheduling");
+                                navigate(`/scheduling?tab=${targetTab}`);
                               }
                             }
                           }}
-                          className="p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer"
+                          className={`p-4 border-b border-slate-100 dark:border-zinc-800/50 hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer ${
+                            n.TrangThaiDoc === 0 ? 'bg-blue-50/30 dark:bg-blue-950/10 font-bold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-zinc-400'
+                          }`}
                         >
-                          <div className="font-bold text-sm text-slate-800 dark:text-white">{n.TieuDe}</div>
-                          <div className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{n.NoiDung}</div>
+                          <div className="font-bold text-sm">{n.TieuDe}</div>
+                          <div className="text-xs mt-1">{n.NoiDung}</div>
                           <div className="text-[10px] text-slate-400 mt-2">{new Date(n.NgayTao).toLocaleString("vi-VN")}</div>
                         </div>
                       ))}

@@ -31,7 +31,7 @@ const STATUS_CONFIG = {
 
 export default function ShiftScheduling() {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState("register"); // 'register' | 'approvals'
+  const [activeTab, setActiveTab] = useState("register"); // 'register' | 'approvals' | 'official'
   const [shifts, setShifts] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
   const [registrations, setRegistrations] = useState([]);
@@ -102,7 +102,24 @@ export default function ShiftScheduling() {
         setDraftChanges({}); // Clear drafts on fetch
       }
       if (statusRes.data.success) {
-        setWeekStatus(statusRes.data.data.TrangThai);
+        const newStatus = statusRes.data.data.TrangThai;
+        setWeekStatus(newStatus);
+        
+        const urlParams = new URLSearchParams(location.search);
+        const urlTab = urlParams.get("tab");
+        if (urlTab) {
+          if (urlTab === "official" && newStatus !== "admin_approved") {
+            setActiveTab("register");
+          } else {
+            setActiveTab(urlTab);
+          }
+        } else {
+          if (newStatus === "admin_approved") {
+            setActiveTab("official");
+          } else {
+            setActiveTab("register");
+          }
+        }
       }
     } catch (e) { console.error(e); }
   };
@@ -130,7 +147,7 @@ export default function ShiftScheduling() {
       }
     }
     const tabParam = params.get("tab");
-    if (tabParam && (tabParam === "register" || tabParam === "approvals")) {
+    if (tabParam && (tabParam === "register" || tabParam === "approvals" || tabParam === "official")) {
       setActiveTab(tabParam);
     }
   }, [location.search]);
@@ -352,7 +369,7 @@ export default function ShiftScheduling() {
           const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           return dateStr === date;
         });
-        if (reg && reg.TrangThai === "pending") {
+        if (reg && (reg.TrangThai === "pending" || weekStatus === "reopened")) {
           try {
             await axios.delete(`${API}/shifts/register/${reg.MaDangKy}`);
           } catch (e) { 
@@ -417,6 +434,27 @@ export default function ShiftScheduling() {
     </div>
   );
 
+  const getHeaderInfo = () => {
+    if (activeTab === "official") {
+      return {
+        title: "Lịch Làm Việc Chính Thức",
+        desc: "Xem lịch làm việc chính thức của tuần"
+      };
+    }
+    if (activeTab === "approvals") {
+      return {
+        title: "Duyệt Đăng Ký Ca Làm",
+        desc: "Xem & duyệt ca làm việc của nhân viên"
+      };
+    }
+    return {
+      title: "Bảng Đăng Ký Ca Làm",
+      desc: isManager || isAdmin ? "Xem lịch & duyệt ca làm việc" : "Xem lịch & đăng ký ca làm"
+    };
+  };
+
+  const headerInfo = getHeaderInfo();
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 p-4 md:p-6">
       <header className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm mb-6">
@@ -430,10 +468,10 @@ export default function ShiftScheduling() {
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900 dark:text-white">
-                {weekStatus === 'admin_approved' ? "Lịch Làm Việc Chính Thức" : "Bảng Đăng Ký Ca Làm"}
+                {headerInfo.title}
               </h1>
               <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
-                {weekStatus === 'admin_approved' ? "Xem lịch làm việc chính thức của tuần" : "Xem lịch & đăng ký ca làm"}
+                {headerInfo.desc}
               </p>
             </div>
           </div>
@@ -449,37 +487,52 @@ export default function ShiftScheduling() {
       </header>
 
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm">
-        <div className="flex border-b border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
-          <button
-            onClick={() => setActiveTab("register")}
-            className={`px-6 py-4 text-sm font-bold flex items-center gap-2 transition-all ${
-              activeTab === "register"
-                ? "text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 bg-white dark:bg-zinc-900"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            }`}
-          >
-            <ClipboardList className="w-4 h-4" /> {weekStatus === 'admin_approved' ? "Lịch làm việc chính thức" : "Đăng ký ca"}
-          </button>
-          
-          {isManager && (
+        {location.pathname !== "/" && (
+          <div className="flex border-b border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
             <button
-              onClick={() => setActiveTab("approvals")}
+              onClick={() => setActiveTab("register")}
               className={`px-6 py-4 text-sm font-bold flex items-center gap-2 transition-all ${
-                activeTab === "approvals"
+                activeTab === "register"
                   ? "text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 bg-white dark:bg-zinc-900"
                   : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
               }`}
             >
-              <CheckSquare className="w-4 h-4" /> Duyệt đăng ký
-              {pendingRegs.length > 0 && (
-                <span className="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingRegs.length}</span>
-              )}
+              <ClipboardList className="w-4 h-4" /> Đăng ký ca
             </button>
-          )}
-        </div>
+            
+            {(isManager || isAdmin) && (
+              <button
+                onClick={() => setActiveTab("approvals")}
+                className={`px-6 py-4 text-sm font-bold flex items-center gap-2 transition-all ${
+                  activeTab === "approvals"
+                    ? "text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 bg-white dark:bg-zinc-900"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <CheckSquare className="w-4 h-4" /> Duyệt đăng ký
+                {pendingRegs.length > 0 && (
+                  <span className="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingRegs.length}</span>
+                )}
+              </button>
+            )}
 
-        {/* ====== TAB 2: ĐĂNG KÝ CA (Grid như bảng Excel) ====== */}
-        {activeTab === "register" && (
+            {weekStatus === 'admin_approved' && (
+              <button
+                onClick={() => setActiveTab("official")}
+                className={`px-6 py-4 text-sm font-bold flex items-center gap-2 transition-all ${
+                  activeTab === "official"
+                    ? "text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 bg-white dark:bg-zinc-900"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" /> Lịch làm chính thức
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ====== TAB 2: ĐĂNG KÝ CA / LỊCH LÀM CHÍNH THỨC ====== */}
+        {(activeTab === "register" || activeTab === "official") && (
           <div className="p-4 overflow-x-auto">
             {isStaff && weekStatus === 'pending' ? (
               <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50/50 dark:bg-zinc-900/50 rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800 my-4 shadow-sm animate-in fade-in zoom-in-95 duration-300">
@@ -497,7 +550,7 @@ export default function ShiftScheduling() {
                 <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                  {weekStatus === 'admin_approved' ? "Lịch Làm Việc Chính Thức" : "Bảng Đăng Ký Ca Làm"}
+                  {activeTab === "official" ? "Lịch Làm Việc Chính Thức" : "Bảng Đăng Ký Ca Làm"}
                 </h2>
                   <p className="text-sm text-slate-500 mt-1">
                     Trạng thái tuần: 
@@ -509,34 +562,29 @@ export default function ShiftScheduling() {
                           {isPastDeadline() && <span className="text-rose-600 ml-2 font-black">(Đã hết hạn đăng ký - Hạn cuối: 18h00 Chủ Nhật)</span>}
                         </>
                       )}
-                      {weekStatus === 'reopened' && <span className="text-amber-600">Đang mở lại đăng ký (Bởi Admin)</span>}
-                      {weekStatus === 'manager_approved' && <span className="text-amber-600">Chờ Admin duyệt</span>}
+                      {weekStatus === 'reopened' && <span className="text-amber-600">Đang mở lại đăng ký (Bởi Quản lý)</span>}
+                      {weekStatus === 'manager_approved' && <span className="text-amber-600">Chờ duyệt</span>}
                       {weekStatus === 'admin_approved' && <span className="text-emerald-600">Đã chốt lịch</span>}
                     </span>
                   </p>
                 </div>
                 <div className="flex gap-2 items-center">
-                  {isManager && weekStatus === 'pending' && (
+                  {(isManager || isAdmin) && weekStatus === 'pending' && (
                     <button onClick={handleOpenRegistration} className="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <BellRing className="w-4 h-4" /> Mở đăng ký
                     </button>
                   )}
-                  {isManager && (weekStatus === 'open' || weekStatus === 'reopened') && (
-                    <button onClick={handleSubmitToAdmin} className="flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
-                      <Send className="w-4 h-4" /> Gửi bảng cho Admin duyệt
-                    </button>
-                  )}
-                  {isAdmin && (weekStatus === 'manager_approved' || weekStatus === 'reopened') && (
+                  {(isManager || isAdmin) && (weekStatus === 'open' || weekStatus === 'reopened') && (
                     <button onClick={handleAdminFinalize} className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <CheckCircle className="w-4 h-4" /> Chốt lịch làm việc
                     </button>
                   )}
-                  {isAdmin && weekStatus === 'admin_approved' && (
+                  {(isManager || isAdmin) && weekStatus === 'admin_approved' && activeTab === "register" && (
                     <button onClick={handleAdminReopen} className="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
                       <RefreshCw className="w-4 h-4" /> Mở lại đăng ký
                     </button>
                   )}
-                  {isStaff && (
+                  {isStaff && activeTab !== "official" && (
                     <button 
                       onClick={handleSaveChanges} 
                       disabled={Object.keys(draftChanges).length === 0 || isSaving || (weekStatus === 'open' && isPastDeadline())} 
@@ -556,11 +604,17 @@ export default function ShiftScheduling() {
             </div>
 
             {/* Legend */}
-            <div className="flex flex-wrap gap-3 mb-4">
-              <span className="text-xs font-bold px-3 py-1 rounded-full border bg-sky-200 text-sky-800">Đã duyệt (X)</span>
-              <span className="text-xs font-bold px-3 py-1 rounded-full border bg-amber-100 text-amber-800">Chờ duyệt (X)</span>
-              <span className="text-xs font-bold px-3 py-1 rounded-full border bg-rose-100 text-rose-800">Từ chối (❌)</span>
-            </div>
+            {activeTab === "official" ? (
+              <div className="flex flex-wrap gap-3 mb-4">
+                <span className="text-xs font-bold px-3 py-1 rounded-full border bg-sky-200 text-sky-800">Lịch làm chính thức (X)</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-3 mb-4">
+                <span className="text-xs font-bold px-3 py-1 rounded-full border bg-sky-200 text-sky-800">Đã duyệt (X)</span>
+                <span className="text-xs font-bold px-3 py-1 rounded-full border bg-amber-100 text-amber-800">Chờ duyệt (X)</span>
+                <span className="text-xs font-bold px-3 py-1 rounded-full border bg-rose-100 text-rose-800">Từ chối (❌)</span>
+              </div>
+            )}
 
             <div className="min-w-max border border-slate-300 dark:border-zinc-700">
               <table className="w-full text-xs text-center border-collapse">
@@ -611,7 +665,7 @@ export default function ShiftScheduling() {
                   <tbody>
                     {staffMembers.map(emp => {
                       const isFT = emp.LoaiNhanVien === 'Full-time' || emp.LoaiNhanVien === 'Toàn thời gian';
-                      const canClick = getCanClick(emp);
+                      const canClick = activeTab === "official" ? false : getCanClick(emp);
                       
                       const isMyRow = String(emp.MaNhanVien) === String(myEmployeeId);
                       return (
@@ -620,11 +674,19 @@ export default function ShiftScheduling() {
                           {emp.HoTen} {isMyRow && '(Bạn)'}
                         </td>
                         {days.map(day => {
-                          const rA = getReg(emp.MaNhanVien, day.date, caA?.MaCaLam);
-                          const rB = getReg(emp.MaNhanVien, day.date, caB?.MaCaLam);
-                          const r1 = getReg(emp.MaNhanVien, day.date, ca1?.MaCaLam);
-                          const r2 = getReg(emp.MaNhanVien, day.date, ca2?.MaCaLam);
-                          const r3 = getReg(emp.MaNhanVien, day.date, ca3?.MaCaLam);
+                          const getFilteredReg = (empId, date, shiftId) => {
+                            const reg = getReg(empId, date, shiftId);
+                            if (activeTab === "official") {
+                              return (reg && reg.TrangThai === "approved") ? reg : null;
+                            }
+                            return reg;
+                          };
+
+                          const rA = getFilteredReg(emp.MaNhanVien, day.date, caA?.MaCaLam);
+                          const rB = getFilteredReg(emp.MaNhanVien, day.date, caB?.MaCaLam);
+                          const r1 = getFilteredReg(emp.MaNhanVien, day.date, ca1?.MaCaLam);
+                          const r2 = getFilteredReg(emp.MaNhanVien, day.date, ca2?.MaCaLam);
+                          const r3 = getFilteredReg(emp.MaNhanVien, day.date, ca3?.MaCaLam);
 
                           const keyA = `${emp.MaNhanVien}_${day.date}_${caA?.MaCaLam}`;
                           const keyB = `${emp.MaNhanVien}_${day.date}_${caB?.MaCaLam}`;
@@ -632,11 +694,11 @@ export default function ShiftScheduling() {
                           const key2 = `${emp.MaNhanVien}_${day.date}_${ca2?.MaCaLam}`;
                           const key3 = `${emp.MaNhanVien}_${day.date}_${ca3?.MaCaLam}`;
 
-                          const draftA = draftChanges[keyA];
-                          const draftB = draftChanges[keyB];
-                          const draft1 = draftChanges[key1];
-                          const draft2 = draftChanges[key2];
-                          const draft3 = draftChanges[key3];
+                          const draftA = activeTab === "official" ? null : draftChanges[keyA];
+                          const draftB = activeTab === "official" ? null : draftChanges[keyB];
+                          const draft1 = activeTab === "official" ? null : draftChanges[key1];
+                          const draft2 = activeTab === "official" ? null : draftChanges[key2];
+                          const draft3 = activeTab === "official" ? null : draftChanges[key3];
 
                           const actA = rA || r1;
                           const actA2 = rA || r2;

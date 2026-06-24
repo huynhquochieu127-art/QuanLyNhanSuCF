@@ -229,6 +229,23 @@ const registerShift = async (req, res) => {
       'INSERT INTO dangky_ca (MaNhanVien, MaCaLam, NgayLam, TrangThai, GhiChu) VALUES (?, ?, ?, ?, ?)',
       [MaNhanVien, MaCaLam, NgayLam, 'pending', GhiChu || '']
     );
+
+    // Gửi thông báo đến cho Quản lý (MaVaiTro = 2)
+    try {
+      const [empRows] = await db.query('SELECT HoTen FROM nhanvien WHERE MaNhanVien = ?', [MaNhanVien]);
+      const empName = empRows[0]?.HoTen || 'Nhân viên';
+      const [caRows] = await db.query('SELECT TenCaLam FROM calam WHERE MaCaLam = ?', [MaCaLam]);
+      const caName = caRows[0]?.TenCaLam || '';
+      const formattedDate = new Date(NgayLam).toLocaleDateString('vi-VN');
+      
+      await db.query(
+        'INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaVaiTro) VALUES (?, ?, ?, 2)',
+        ['Yêu cầu đăng ký ca mới', `${empName} đã đăng ký ca làm mới: ${caName} ngày ${formattedDate}.`, 'info']
+      );
+    } catch (errNotif) {
+      console.error('Lỗi tạo thông báo đăng ký ca:', errNotif.message);
+    }
+
     res.status(201).json({ success: true, message: 'Đăng ký ca thành công, chờ quản lý xác nhận', data: { id: result.insertId } });
   } catch (error) {
     console.error('Lỗi đăng ký ca:', error);
@@ -242,12 +259,31 @@ const cancelRegistration = async (req, res) => {
     const { id } = req.params;
     const [check] = await db.query('SELECT * FROM dangky_ca WHERE MaDangKy = ?', [id]);
     if (check.length === 0) return res.status(404).json({ success: false, message: 'Không tìm thấy đăng ký' });
+    
     if (check[0].TrangThai !== 'pending') {
-      return res.status(400).json({ success: false, message: 'Chỉ có thể hủy đăng ký đang chờ duyệt' });
+      // Tính toán ngày thứ Hai đầu tuần của ngày làm việc
+      const dateVal = new Date(check[0].NgayLam);
+      const day = dateVal.getDay();
+      const diff = dateVal.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(dateVal.setDate(diff));
+      const weekStr = monday.toISOString().split('T')[0];
+
+      // Lấy trạng thái của tuần đó
+      const [weekStatusRows] = await db.query('SELECT TrangThai FROM trangthai_tuan WHERE MaTuan = ?', [weekStr]);
+      const weekStatus = weekStatusRows[0]?.TrangThai;
+
+      if (weekStatus !== 'reopened') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Chỉ có thể hủy đăng ký đang chờ duyệt hoặc khi tuần được mở lại đăng ký' 
+        });
+      }
     }
+    
     await db.query('DELETE FROM dangky_ca WHERE MaDangKy = ?', [id]);
     res.json({ success: true, message: 'Đã hủy đăng ký ca' });
   } catch (error) {
+    console.error('Lỗi hủy đăng ký ca:', error);
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };
@@ -260,7 +296,40 @@ const updateRegistrationStatus = async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Trạng thái không hợp lệ: ' + status });
     }
+    
+    // Lấy thông tin đăng ký để tạo thông báo trước khi update hoặc sau
+    const [regRows] = await db.query(
+      `SELECT r.MaNhanVien, r.NgayLam, c.TenCaLam 
+       FROM dangky_ca r
+       JOIN calam c ON r.MaCaLam = c.MaCaLam
+       WHERE r.MaDangKy = ?`,
+      [id]
+    );
+
     await db.query('UPDATE dangky_ca SET TrangThai = ? WHERE MaDangKy = ?', [status, id]);
+
+    // Tạo thông báo cho nhân viên
+    if (regRows.length > 0) {
+      try {
+        const reg = regRows[0];
+        const formattedDate = new Date(reg.NgayLam).toLocaleDateString('vi-VN');
+        const statusText = status === 'approved' ? 'duyệt' : 'từ chối';
+        const type = status === 'approved' ? 'success' : 'warning';
+        
+        await db.query(
+          'INSERT INTO thongbao (TieuDe, NoiDung, Loai, MaTaiKhoan) VALUES (?, ?, ?, ?)',
+          [
+            'Kết quả duyệt đăng ký ca', 
+            `Đăng ký ca làm ${reg.TenCaLam} ngày ${formattedDate} của bạn đã được Quản lý ${statusText}.`,
+            type,
+            reg.MaNhanVien
+          ]
+        );
+      } catch (errNotif) {
+        console.error('Lỗi gửi thông báo duyệt ca:', errNotif.message);
+      }
+    }
+
     res.json({ success: true, message: status === 'approved' ? 'Đã duyệt đăng ký ca' : 'Đã từ chối đăng ký ca' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Lỗi server' });
@@ -342,7 +411,7 @@ const updateWeekStatus = async (req, res) => {
       // Xóa các phân ca trong tuần đó khi mở lại đăng ký
       await db.query('DELETE FROM phancanhanvien WHERE NgayLam >= ? AND NgayLam <= ?', [startStr, endStr]);
       
-      thongBao = `Admin đã mở lại cổng đăng ký lịch làm việc cho tuần ${week}. Nhân viên có thể thực hiện đăng ký và thay đổi ca làm.`;
+      thongBao = `Quản lý đã mở lại cổng đăng ký lịch làm việc cho tuần ${week}. Nhân viên có thể thực hiện đăng ký và thay đổi ca làm.`;
     }
 
     const [existing] = await db.query('SELECT * FROM trangthai_tuan WHERE MaTuan = ?', [week]);

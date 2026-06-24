@@ -85,7 +85,11 @@ export default function EmployeeDirectory() {
         setPendingLeave(leaveRes.data.data.filter(r => r.TrangThai === "pending"));
       }
       if (attRes.data.success) {
-        setPendingAttendance(attRes.data.data.filter(r => r.TrangThai === "pending"));
+        const nonLeave = attRes.data.data.filter(r => {
+          const loaiLower = r.Loai ? r.Loai.toLowerCase() : '';
+          return !loaiLower.includes('nghỉ');
+        });
+        setPendingAttendance(nonLeave.filter(r => r.TrangThai === "pending"));
       }
 
       // Ca làm việc: Lấy tuần hiện tại
@@ -321,7 +325,6 @@ export default function EmployeeDirectory() {
               {[
                 { key: "leave", label: "Đơn xin nghỉ", badge: pendingLeave.length },
                 { key: "attendance", label: "Bổ sung điểm danh", badge: pendingAttendance.length },
-                { key: "shift", label: "Đăng ký ca", badge: pendingShifts.length },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -367,24 +370,6 @@ export default function EmployeeDirectory() {
                     <div className="flex gap-2">
                       <button onClick={() => handleApproveAttendance(req.MaYeuCau, "approved")} className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"><CheckCircle className="w-4 h-4"/> Duyệt</button>
                       <button onClick={() => handleApproveAttendance(req.MaYeuCau, "rejected")} className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-rose-600 transition-colors"><XCircle className="w-4 h-4"/> Từ chối</button>
-                    </div>
-                  </div>
-                ))
-              )}
-              {approvalTab === "shift" && (
-                pendingShifts.length === 0 ? <p className="text-slate-500 text-center py-4 font-medium">Không có đăng ký ca chờ duyệt</p> :
-                pendingShifts.map(req => (
-                  <div key={req.MaDangKy} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div>
-                      <div className="font-bold text-slate-900">{req.HoTen}</div>
-                      <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
-                        <span className="flex items-center gap-1 font-bold"><Calendar className="w-4 h-4"/> {new Date(req.NgayLam).toLocaleDateString("vi-VN")}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-4 h-4 ml-1"/> {req.TenCaLam} ({req.GioBatDau}-{req.GioKetThuc})</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproveShift(req.MaDangKy, "approved")} className="px-4 py-2 bg-emerald-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"><CheckCircle className="w-4 h-4"/> Duyệt</button>
-                      <button onClick={() => handleApproveShift(req.MaDangKy, "rejected")} className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl shadow-sm flex items-center gap-1.5 hover:bg-rose-600 transition-colors"><XCircle className="w-4 h-4"/> Từ chối</button>
                     </div>
                   </div>
                 ))

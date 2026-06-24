@@ -48,7 +48,6 @@ export const router = createBrowserRouter([
       { path: "login", Component: Login },
       // Các route dùng chung cho mọi vai trò sau khi đăng nhập
       { path: "timekeeping", Component: protect(Timekeeping, [1, 2, 3]) },
-      { path: "customers", Component: protect(CustomerLoyalty, [1, 2, 3]) },
       
       // Các route chỉ Admin (1) và Manager (2) được vào
       { path: "employees", Component: protect(EmployeeDirectory, [1, 2]) },

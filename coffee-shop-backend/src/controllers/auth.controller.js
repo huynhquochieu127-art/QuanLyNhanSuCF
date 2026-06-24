@@ -120,7 +120,7 @@ const register = async (req, res) => {
       const [columnsResult] = await db.query(`
         SELECT COLUMN_NAME, DATA_TYPE 
         FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'taikhoan' AND TABLE_SCHEMA = DATABASE()
+        WHERE TABLE_NAME = 'taikhoan'
       `);
       columns = columnsResult || [];
     } catch (e) {
@@ -128,14 +128,33 @@ const register = async (req, res) => {
     }
 
     try {
-      const [identityCheck] = await db.query(`
-        SELECT EXTRA 
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'taikhoan' AND TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'MaTaiKhoan'
+      // Đầu tiên thử kiểm tra với SQL Server
+      const [sqlServerCheck] = await db.query(`
+        SELECT COLUMNPROPERTY(OBJECT_ID('taikhoan'), 'MaTaiKhoan', 'IsIdentity') AS is_identity
       `);
-      hasIdentity = identityCheck && identityCheck[0] && identityCheck[0].EXTRA && identityCheck[0].EXTRA.includes('auto_increment');
+      if (sqlServerCheck && sqlServerCheck[0] && sqlServerCheck[0].is_identity !== undefined && sqlServerCheck[0].is_identity !== null) {
+        hasIdentity = sqlServerCheck[0].is_identity === 1;
+      } else {
+        // Fallback sang MySQL
+        const [identityCheck] = await db.query(`
+          SELECT EXTRA 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = 'taikhoan' AND COLUMN_NAME = 'MaTaiKhoan'
+        `);
+        hasIdentity = identityCheck && identityCheck[0] && identityCheck[0].EXTRA && identityCheck[0].EXTRA.includes('auto_increment');
+      }
     } catch (e) {
-      console.warn("Không thể truy vấn auto_increment:", e.message);
+      // Fallback sang MySQL khi lỗi SQL Server
+      try {
+        const [identityCheck] = await db.query(`
+          SELECT EXTRA 
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_NAME = 'taikhoan' AND COLUMN_NAME = 'MaTaiKhoan'
+        `);
+        hasIdentity = identityCheck && identityCheck[0] && identityCheck[0].EXTRA && identityCheck[0].EXTRA.includes('auto_increment');
+      } catch (mysqlErr) {
+        console.warn("Không thể truy vấn auto_increment:", mysqlErr.message);
+      }
     }
 
     const pkColumn = columns && Array.isArray(columns) ? columns.find(c => c.COLUMN_NAME && c.COLUMN_NAME.toLowerCase() === 'mataikhoan') : null;

@@ -24,7 +24,7 @@ export default function ProductManagement() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/products');
+      const res = await axios.get('https://quanlynhansucf.onrender.com/api/products');
       if (res.data.success) {
         const mapped = res.data.data.map(p => ({
           id: p.MaSanPham,
@@ -81,10 +81,10 @@ export default function ProductManagement() {
     e.preventDefault();
     try {
       if (editingId) {
-        await axios.put(`http://localhost:5000/api/products/${editingId}`, formData);
+        await axios.put(`https://quanlynhansucf.onrender.com/api/products/${editingId}`, formData);
         toast.success("Cập nhật sản phẩm thành công");
       } else {
-        await axios.post(`http://localhost:5000/api/products`, formData);
+        await axios.post(`https://quanlynhansucf.onrender.com/api/products`, formData);
         toast.success("Thêm sản phẩm thành công");
       }
       fetchProducts();
@@ -97,7 +97,7 @@ export default function ProductManagement() {
   const handleDelete = async (id) => {
     if (window.confirm("Bạn có chắc muốn xóa sản phẩm này?")) {
       try {
-        await axios.delete(`http://localhost:5000/api/products/${id}`);
+        await axios.delete(`https://quanlynhansucf.onrender.com/api/products/${id}`);
         toast.success("Xóa sản phẩm thành công");
         fetchProducts();
       } catch (err) {
@@ -109,7 +109,7 @@ export default function ProductManagement() {
   const toggleStock = async (product) => {
     try {
       const newStatus = product.inStock ? 0 : 1;
-      await axios.put(`http://localhost:5000/api/products/${product.id}`, {
+      await axios.put(`https://quanlynhansucf.onrender.com/api/products/${product.id}`, {
         TenSanPham: product.name,
         Gia: product.price,
         MoTa: product.image,

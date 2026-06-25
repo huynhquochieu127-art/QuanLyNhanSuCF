@@ -37,7 +37,7 @@ export default function POSDashboard() {
   useEffect(() => {
     const fetchProductsAndTables = async () => {
       try {
-        const resProducts = await axios.get('http://localhost:5000/api/products');
+        const resProducts = await axios.get('https://quanlynhansucf.onrender.com/api/products');
         if (resProducts.data.success) {
           const mapped = resProducts.data.data
             .filter(p => p.CoBan === 1)
@@ -51,7 +51,7 @@ export default function POSDashboard() {
           setMenuItems(mapped);
         }
 
-        const resTables = await axios.get('http://localhost:5000/api/tables');
+        const resTables = await axios.get('https://quanlynhansucf.onrender.com/api/tables');
         if (resTables.data.success) {
           const mappedTables = resTables.data.data.map(t => ({
             id: t.MaBan,
@@ -130,7 +130,7 @@ export default function POSDashboard() {
     try {
       let customerId = null;
       if (customerPhone) {
-        const cusRes = await axios.post('http://localhost:5000/api/customers/find-or-create', { SoDienThoai: customerPhone });
+        const cusRes = await axios.post('https://quanlynhansucf.onrender.com/api/customers/find-or-create', { SoDienThoai: customerPhone });
         if (cusRes.data.success) {
           customerId = cusRes.data.data.MaKhachHang;
         }
@@ -150,7 +150,7 @@ export default function POSDashboard() {
         }))
       };
 
-      const res = await axios.post('http://localhost:5000/api/pos/order', orderData);
+      const res = await axios.post('https://quanlynhansucf.onrender.com/api/pos/order', orderData);
       
       if (res.data.success) {
         setIsProcessingPayment(false);

@@ -48,7 +48,7 @@ export default function AdminLayout({ children }) {
         const user = userStr ? JSON.parse(userStr) : null;
         if (!user) return;
 
-        const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
+        const res = await axios.get(`https://quanlynhansucf.onrender.com/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
         if (res.data.success) {
           setNotifications(res.data.data);
         }
@@ -78,7 +78,7 @@ export default function AdminLayout({ children }) {
     try {
       const token = sessionStorage.getItem('token');
       if (token) {
-        await axios.post('http://localhost:5000/api/auth/logout', {}, {
+        await axios.post('https://quanlynhansucf.onrender.com/api/auth/logout', {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
@@ -316,7 +316,7 @@ export default function AdminLayout({ children }) {
                           onClick={async () => {
                             setShowNotifications(false);
                             try {
-                              await axios.put(`http://localhost:5000/api/notifications/${n.MaThongBao}/read`);
+                              await axios.put(`https://quanlynhansucf.onrender.com/api/notifications/${n.MaThongBao}/read`);
                               setNotifications(prev => prev.map(item => item.MaThongBao === n.MaThongBao ? { ...item, TrangThaiDoc: 1 } : item));
                             } catch (e) {
                               console.error(e);

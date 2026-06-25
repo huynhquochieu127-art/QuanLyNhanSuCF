@@ -16,7 +16,7 @@ export default function ShiftManagement() {
   const fetchShifts = async () => {
     try {
       setLoading(true);
-      const res = await axios.get("http://localhost:5000/api/shifts");
+      const res = await axios.get("https://quanlynhansucf.onrender.com/api/shifts");
       if (res.data.success) {
         setShifts(res.data.data);
       }
@@ -47,9 +47,9 @@ export default function ShiftManagement() {
       
       let res;
       if (isEditingShift) {
-        res = await axios.put(`http://localhost:5000/api/shifts/${editShiftForm.MaCaLam}`, editShiftForm);
+        res = await axios.put(`https://quanlynhansucf.onrender.com/api/shifts/${editShiftForm.MaCaLam}`, editShiftForm);
       } else {
-        res = await axios.post("http://localhost:5000/api/shifts", editShiftForm);
+        res = await axios.post("https://quanlynhansucf.onrender.com/api/shifts", editShiftForm);
       }
       
       if (res.data.success) {
@@ -77,7 +77,7 @@ export default function ShiftManagement() {
   const handleDeleteShift = async (id) => {
     if (!window.confirm("Bạn có chắc muốn xóa ca làm này? Việc xóa sẽ xóa luôn tất cả lịch phân ca liên quan đến ca này!")) return;
     try {
-      const res = await axios.delete(`http://localhost:5000/api/shifts/${id}`);
+      const res = await axios.delete(`https://quanlynhansucf.onrender.com/api/shifts/${id}`);
       if (res.data.success) {
         toast.success("Đã xóa ca làm thành công");
         fetchShifts();

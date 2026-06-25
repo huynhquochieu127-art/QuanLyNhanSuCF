@@ -140,7 +140,7 @@ export default function Home() {
     if (user?.MaTaiKhoan) {
       const fetchTimekeeping = async () => {
         try {
-          const res = await axios.get(`http://localhost:5000/api/timekeeping/today-status?employeeId=${user.MaTaiKhoan}`);
+          const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/today-status?employeeId=${user.MaTaiKhoan}`);
           if (res.data.success) {
             setIsCheckedIn(res.data.data.isCheckedIn);
             setCheckInTime(res.data.data.checkInTime || "-");
@@ -153,7 +153,7 @@ export default function Home() {
             }
           }
 
-          const reqRes = await axios.get(`http://localhost:5000/api/timekeeping/requests?employeeId=${user.MaTaiKhoan}`);
+          const reqRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/requests?employeeId=${user.MaTaiKhoan}`);
           if (reqRes.data.success) {
             setAttendanceRequests(reqRes.data.data.map(r => ({
               id: `RQ-${r.MaYeuCau}`,
@@ -174,7 +174,7 @@ export default function Home() {
       // Lấy dữ liệu profile
       const fetchProfile = async () => {
         try {
-          const res = await axios.get(`http://localhost:5000/api/employees/${user.MaTaiKhoan}`);
+          const res = await axios.get(`https://quanlynhansucf.onrender.com/api/employees/${user.MaTaiKhoan}`);
           if (res.data.success) {
             setProfileData(res.data.data);
           }
@@ -187,7 +187,7 @@ export default function Home() {
       const fetchAdminStats = async () => {
         if (userRole === "1") {
           try {
-            const res = await axios.get(`http://localhost:5000/api/stats/dashboard`);
+            const res = await axios.get(`https://quanlynhansucf.onrender.com/api/stats/dashboard`);
             if (res.data.success) {
               setAdminStats(res.data.data);
             }
@@ -200,7 +200,7 @@ export default function Home() {
       // Fetch thông báo
       const fetchNotifs = async () => {
         try {
-          const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
+          const res = await axios.get(`https://quanlynhansucf.onrender.com/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
           if (res.data.success) {
             setNotifications(res.data.data);
           }
@@ -225,7 +225,7 @@ export default function Home() {
     if (!user?.MaTaiKhoan) return;
     const fetchNotifs = async () => {
       try {
-        const res = await axios.get(`http://localhost:5000/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
+        const res = await axios.get(`https://quanlynhansucf.onrender.com/api/notifications?userId=${user.MaTaiKhoan}&roleId=${user.MaVaiTro}`);
         if (res.data.success) {
           setNotifications(res.data.data);
         }
@@ -242,7 +242,7 @@ export default function Home() {
   useEffect(() => {
     if (showMissingAttendanceModal && user?.MaTaiKhoan) {
       // Tải ca làm tiêu chuẩn
-      axios.get('http://localhost:5000/api/shifts')
+      axios.get('https://quanlynhansucf.onrender.com/api/shifts')
         .then(res => {
           if (res.data.success) {
             setStandardShifts(res.data.data);
@@ -254,7 +254,7 @@ export default function Home() {
         .catch(err => console.error("Lỗi tải ca làm tiêu chuẩn:", err));
 
       // Tải danh sách nhân viên hoạt động
-      axios.get('http://localhost:5000/api/employees')
+      axios.get('https://quanlynhansucf.onrender.com/api/employees')
         .then(res => {
           if (res.data.success) {
             const otherEmployees = res.data.data.filter(emp => String(emp.MaNhanVien) !== String(user.MaTaiKhoan));
@@ -271,7 +271,7 @@ export default function Home() {
   // Tải lịch phân ca của bản thân khi thay đổi ngày
   useEffect(() => {
     if (showMissingAttendanceModal && user?.MaTaiKhoan && missingDate) {
-      axios.get(`http://localhost:5000/api/timekeeping/scheduled-shifts?employeeId=${user.MaTaiKhoan}&date=${missingDate}`)
+      axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/scheduled-shifts?employeeId=${user.MaTaiKhoan}&date=${missingDate}`)
         .then(res => {
           if (res.data.success) {
             setUserSchedules(res.data.data);
@@ -289,7 +289,7 @@ export default function Home() {
   // Tải lịch phân ca của nhân viên muốn đổi ca cùng khi ngày hoặc nhân viên đổi thay đổi
   useEffect(() => {
     if (showMissingAttendanceModal && selectedSwapEmp && missingDate && requestCategory === "doica" && swapType === "peer_swap") {
-      axios.get(`http://localhost:5000/api/timekeeping/scheduled-shifts?employeeId=${selectedSwapEmp}&date=${missingDate}`)
+      axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/scheduled-shifts?employeeId=${selectedSwapEmp}&date=${missingDate}`)
         .then(res => {
           if (res.data.success) {
             setTargetEmpSchedules(res.data.data);
@@ -343,7 +343,7 @@ export default function Home() {
   const handleSaveProfile = async () => {
     try {
       setSavingProfile(true);
-      const res = await axios.put(`http://localhost:5000/api/employees/${user.MaTaiKhoan}`, editProfileForm);
+      const res = await axios.put(`https://quanlynhansucf.onrender.com/api/employees/${user.MaTaiKhoan}`, editProfileForm);
       if (res.data.success) {
         toast.success("Cập nhật hồ sơ thành công!");
         setProfileData({ ...profileData, ...editProfileForm });
@@ -372,7 +372,7 @@ export default function Home() {
         setPayslipError(null);
         setPayslipData(null);
         try {
-          const res = await axios.get(`http://localhost:5000/api/payroll/me/${user.MaTaiKhoan}?month=${payslipMonth}&_t=${Date.now()}`);
+          const res = await axios.get(`https://quanlynhansucf.onrender.com/api/payroll/me/${user.MaTaiKhoan}?month=${payslipMonth}&_t=${Date.now()}`);
           if (res.data.success) {
             setPayslipData(res.data.data);
           } else {
@@ -401,7 +401,7 @@ export default function Home() {
           const startStr = mon.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
           const endStr = sun.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-          const res = await axios.get(`http://localhost:5000/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
+          const res = await axios.get(`https://quanlynhansucf.onrender.com/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
           if (res.data.success) {
             const approvedRegs = res.data.data.filter(r => r.MaNhanVien === user.MaTaiKhoan && r.TrangThai === "approved");
             // Sắp xếp theo ngày
@@ -436,7 +436,7 @@ export default function Home() {
     try {
       const token = sessionStorage.getItem('token');
       if (token) {
-        await axios.post('http://localhost:5000/api/auth/logout', {}, {
+        await axios.post('https://quanlynhansucf.onrender.com/api/auth/logout', {}, {
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -557,7 +557,7 @@ export default function Home() {
         LyDo: missingReason
       };
 
-      const res = await axios.post(`http://localhost:5000/api/timekeeping/request`, payload);
+      const res = await axios.post(`https://quanlynhansucf.onrender.com/api/timekeeping/request`, payload);
       
       if (res.data.success) {
         let displayTime = timeText;
@@ -595,7 +595,7 @@ export default function Home() {
   const handleDeleteRequest = async (id) => {
     try {
       const numericId = id.replace('RQ-', '');
-      const res = await axios.delete(`http://localhost:5000/api/timekeeping/request/${numericId}`);
+      const res = await axios.delete(`https://quanlynhansucf.onrender.com/api/timekeeping/request/${numericId}`);
       if (res.data.success) {
         const updated = attendanceRequests.filter(r => r.id !== id);
         setAttendanceRequests(updated);
@@ -611,7 +611,7 @@ export default function Home() {
 
   const handleMarkNotifRead = async (notif) => {
     try {
-      await axios.put(`http://localhost:5000/api/notifications/${notif.MaThongBao}/read`);
+      await axios.put(`https://quanlynhansucf.onrender.com/api/notifications/${notif.MaThongBao}/read`);
       setNotifications(prev => prev.map(n => n.MaThongBao === notif.MaThongBao ? { ...n, TrangThaiDoc: 1 } : n));
       setShowNotifDropdown(false);
       
@@ -663,7 +663,7 @@ export default function Home() {
                     try {
                       const unreadIds = notifications.filter(n => n.TrangThaiDoc === 0).map(n => n.MaThongBao);
                       if (unreadIds.length > 0) {
-                        await axios.put(`http://localhost:5000/api/notifications/read-all`, { notificationIds: unreadIds });
+                        await axios.put(`https://quanlynhansucf.onrender.com/api/notifications/read-all`, { notificationIds: unreadIds });
                         setNotifications(prev => prev.map(n => ({ ...n, TrangThaiDoc: 1 })));
                         toast.success("Đã đọc tất cả thông báo");
                       }

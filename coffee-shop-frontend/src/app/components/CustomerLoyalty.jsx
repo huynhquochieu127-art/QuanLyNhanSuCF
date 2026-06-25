@@ -21,7 +21,7 @@ export default function CustomerLoyalty() {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/customers');
+      const res = await axios.get('https://quanlynhansucf.onrender.com/api/customers');
       if (res.data.success) {
         // Mock reward points for UI since DB doesn't have it yet
         const mapped = res.data.data.map(c => ({
@@ -74,10 +74,10 @@ export default function CustomerLoyalty() {
     e.preventDefault();
     try {
       if (editingId) {
-        await axios.put(`http://localhost:5000/api/customers/${editingId}`, formData);
+        await axios.put(`https://quanlynhansucf.onrender.com/api/customers/${editingId}`, formData);
         toast.success("Cập nhật thành công");
       } else {
-        await axios.post(`http://localhost:5000/api/customers`, formData);
+        await axios.post(`https://quanlynhansucf.onrender.com/api/customers`, formData);
         toast.success("Thêm khách hàng thành công");
       }
       fetchCustomers();
@@ -90,7 +90,7 @@ export default function CustomerLoyalty() {
   const handleDelete = async (id) => {
     if (window.confirm("Bạn có chắc muốn xóa khách hàng này?")) {
       try {
-        await axios.delete(`http://localhost:5000/api/customers/${id}`);
+        await axios.delete(`https://quanlynhansucf.onrender.com/api/customers/${id}`);
         toast.success("Xóa thành công");
         fetchCustomers();
       } catch (err) {

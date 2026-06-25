@@ -32,7 +32,7 @@ export default function PayrollManagement() {
 
   const fetchReports = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/payroll/reports?month=${month}&year=${year}`);
+      const res = await axios.get(`https://quanlynhansucf.onrender.com/api/payroll/reports?month=${month}&year=${year}`);
       if (res.data.success) {
         setReports(res.data.data);
       }
@@ -50,7 +50,7 @@ export default function PayrollManagement() {
     
     setIsCalculating(true);
     try {
-      const res = await axios.post("http://localhost:5000/api/payroll/calculate", { month, year });
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/payroll/calculate", { month, year });
       if (res.data.success) {
         toast.success(`Đã tính lương cho ${res.data.data.length} nhân viên`);
         fetchReports();
@@ -67,7 +67,7 @@ export default function PayrollManagement() {
 
     setIsCalculating(true);
     try {
-      const res = await axios.post("http://localhost:5000/api/payroll/approve", { month, year });
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/payroll/approve", { month, year });
       if (res.data.success) {
         toast.success(res.data.message || "Đã chốt và duyệt lương thành công!");
         fetchReports();

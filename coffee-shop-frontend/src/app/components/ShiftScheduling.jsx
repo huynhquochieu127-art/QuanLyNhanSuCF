@@ -8,7 +8,7 @@ import {
 import axios from "axios";
 import { toast } from "sonner";
 
-const API = "http://localhost:5000/api";
+const API = "https://quanlynhansucf.onrender.com/api";
 
 // Định nghĩa cấu trúc ca cố định
 const SHIFT_STRUCTURE = {

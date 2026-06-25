@@ -35,9 +35,9 @@ export default function EmployeeTimesheet() {
 
   const fetchAllData = async () => {
     try {
-      const attRes = await axios.get(`http://localhost:5000/api/timekeeping`);
+      const attRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping`);
       if (attRes.data.success) setAllAttendance(attRes.data.data);
-      const reqRes = await axios.get(`http://localhost:5000/api/timekeeping/requests`);
+      const reqRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/requests`);
       if (reqRes.data.success) setAllRequests(reqRes.data.data);
     } catch (err) {
       console.error("Lỗi lấy dữ liệu:", err);
@@ -46,7 +46,7 @@ export default function EmployeeTimesheet() {
 
   const fetchTimesheets = async () => {
     try {
-      const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}`);
+      const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timesheets?month=${tsMonth}&year=${tsYear}`);
       if (res.data.success) {
         setTimesheets(res.data.data);
         const notes = {};
@@ -78,7 +78,7 @@ export default function EmployeeTimesheet() {
   // Lưu chỉnh sửa
   const handleSaveEdit = async (maBangCong) => {
     try {
-      const res = await axios.put(`http://localhost:5000/api/timesheets/${maBangCong}`, editForm);
+      const res = await axios.put(`https://quanlynhansucf.onrender.com/api/timesheets/${maBangCong}`, editForm);
       if (res.data.success) {
         toast.success("Đã lưu thay đổi bảng công!");
         setEditingId(null);
@@ -91,7 +91,7 @@ export default function EmployeeTimesheet() {
 
   const handleApproveRequest = async (id, status) => {
     try {
-      const res = await axios.put(`http://localhost:5000/api/timekeeping/request/${id}/status`, { status });
+      const res = await axios.put(`https://quanlynhansucf.onrender.com/api/timekeeping/request/${id}/status`, { status });
       if (res.data.success) {
         toast.success(status === "approved" ? "Đã duyệt yêu cầu!" : "Đã từ chối yêu cầu!");
         fetchAllData();
@@ -104,7 +104,7 @@ export default function EmployeeTimesheet() {
   const handleSendToEmployee = async (maBangCong) => {
     try {
       const ghiChu = editingId === maBangCong ? editForm.GhiChuQL : managerGhiChu[maBangCong] || "";
-      const res = await axios.post("http://localhost:5000/api/timesheets/send-to-employee", { maBangCong, ghiChu });
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/send-to-employee", { maBangCong, ghiChu });
       if (res.data.success) {
         toast.success("✅ Đã gửi bảng công cho nhân viên! Họ sẽ nhận được thông báo.");
         fetchTimesheets();
@@ -116,7 +116,7 @@ export default function EmployeeTimesheet() {
 
   const handleSubmitToAdmin = async (maBangCong) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/timesheets/submit-to-admin", { maBangCong });
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/submit-to-admin", { maBangCong });
       if (res.data.success) {
         toast.success("✅ Đã chốt và gửi bảng công lên Admin tính lương!");
         fetchTimesheets();

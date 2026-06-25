@@ -20,7 +20,7 @@ export default function Login() {
     
     try {
       // Mode Đăng nhập
-      const promise = axios.post('http://localhost:5000/api/auth/login', {
+      const promise = axios.post('https://quanlynhansucf.onrender.com/api/auth/login', {
         Email: email,
         MatKhau: password
       });

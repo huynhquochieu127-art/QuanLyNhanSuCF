@@ -45,7 +45,7 @@ export default function EmployeeDirectory() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('http://localhost:5000/api/employees');
+      const res = await axios.get('https://quanlynhansucf.onrender.com/api/employees');
       if (res.data.success) {
         setEmployeeList(res.data.data);
       } else {
@@ -61,7 +61,7 @@ export default function EmployeeDirectory() {
 
   const fetchPositions = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/positions');
+      const res = await axios.get('https://quanlynhansucf.onrender.com/api/positions');
       if (res.data.success) {
         setPositionsList(res.data.data);
       }
@@ -78,8 +78,8 @@ export default function EmployeeDirectory() {
   const fetchApprovals = async () => {
     try {
       const [leaveRes, attRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/timekeeping/leave'),
-        axios.get('http://localhost:5000/api/timekeeping/requests'),
+        axios.get('https://quanlynhansucf.onrender.com/api/timekeeping/leave'),
+        axios.get('https://quanlynhansucf.onrender.com/api/timekeeping/requests'),
       ]);
       if (leaveRes.data.success) {
         setPendingLeave(leaveRes.data.data.filter(r => r.TrangThai === "pending"));
@@ -102,7 +102,7 @@ export default function EmployeeDirectory() {
       const startStr = currentWeekStart.toISOString().split("T")[0];
       const endStr = end.toISOString().split("T")[0];
       
-      const shiftRes = await axios.get(`http://localhost:5000/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
+      const shiftRes = await axios.get(`https://quanlynhansucf.onrender.com/api/shifts/registrations?startDate=${startStr}&endDate=${endStr}`);
       if (shiftRes.data.success) {
         setPendingShifts(shiftRes.data.data.filter(r => r.TrangThai === "pending"));
       }
@@ -119,7 +119,7 @@ export default function EmployeeDirectory() {
 
   const handleLeaveAction = async (id, status) => {
     try {
-      await axios.put(`http://localhost:5000/api/timekeeping/leave/${id}/status`, { status, GhiChuQL: "" });
+      await axios.put(`https://quanlynhansucf.onrender.com/api/timekeeping/leave/${id}/status`, { status, GhiChuQL: "" });
       toast.success(status === "approved" ? "Đã duyệt đơn nghỉ!" : "Đã từ chối đơn nghỉ!");
       fetchApprovals();
     } catch (e) { toast.error("Lỗi duyệt đơn"); }
@@ -127,7 +127,7 @@ export default function EmployeeDirectory() {
 
   const handleApproveAttendance = async (id, status) => {
     try {
-      await axios.put(`http://localhost:5000/api/timekeeping/request/${id}/status`, { status });
+      await axios.put(`https://quanlynhansucf.onrender.com/api/timekeeping/request/${id}/status`, { status });
       toast.success(status === "approved" ? "Đã duyệt!" : "Đã từ chối!");
       fetchApprovals();
     } catch (e) { toast.error("Lỗi cập nhật"); }
@@ -135,7 +135,7 @@ export default function EmployeeDirectory() {
 
   const handleApproveShift = async (id, status) => {
     try {
-      await axios.put(`http://localhost:5000/api/shifts/register/${id}/status`, { status });
+      await axios.put(`https://quanlynhansucf.onrender.com/api/shifts/register/${id}/status`, { status });
       toast.success(status === "approved" ? "Đã duyệt đăng ký ca" : "Đã từ chối đăng ký ca");
       fetchApprovals();
     } catch (e) { toast.error("Lỗi cập nhật"); }
@@ -211,7 +211,7 @@ export default function EmployeeDirectory() {
     try {
       if (editingId) {
         // Chỉ gửi những gì cho phép sửa
-        const res = await axios.put(`http://localhost:5000/api/employees/${editingId}`, formData);
+        const res = await axios.put(`https://quanlynhansucf.onrender.com/api/employees/${editingId}`, formData);
         if (res.data.success) {
           toast.success("Cập nhật nhân viên thành công");
           fetchEmployees();
@@ -222,7 +222,7 @@ export default function EmployeeDirectory() {
         if (!formData.Email || !formData.MatKhau) {
           return toast.error("Vui lòng nhập Email và Mật khẩu để tạo tài khoản");
         }
-        const res = await axios.post(`http://localhost:5000/api/employees`, formData);
+        const res = await axios.post(`https://quanlynhansucf.onrender.com/api/employees`, formData);
         if (res.data.success) {
           toast.success("Thêm nhân viên và tài khoản thành công");
           fetchEmployees();
@@ -237,7 +237,7 @@ export default function EmployeeDirectory() {
   const handleDelete = async (id) => {
     if (window.confirm("Bạn có chắc chắn muốn cho nghỉ việc và KHÓA tài khoản này?")) {
       try {
-        const res = await axios.delete(`http://localhost:5000/api/employees/${id}`);
+        const res = await axios.delete(`https://quanlynhansucf.onrender.com/api/employees/${id}`);
         if (res.data.success) {
           toast.success(res.data.message || "Đã chuyển trạng thái nghỉ việc");
           fetchEmployees();
@@ -250,7 +250,7 @@ export default function EmployeeDirectory() {
 
   const handleToggleLock = async (id) => {
     try {
-      const res = await axios.put(`http://localhost:5000/api/auth/account/${id}/toggle-lock`);
+      const res = await axios.put(`https://quanlynhansucf.onrender.com/api/auth/account/${id}/toggle-lock`);
       if (res.data.success) {
         toast.success(res.data.message);
         fetchEmployees();
@@ -264,7 +264,7 @@ export default function EmployeeDirectory() {
     const newPassword = window.prompt("Nhập mật khẩu mới cho tài khoản này (Để trống để hủy):", "123456");
     if (newPassword) {
       try {
-        const res = await axios.put(`http://localhost:5000/api/auth/account/${id}/reset-password`, { newPassword });
+        const res = await axios.put(`https://quanlynhansucf.onrender.com/api/auth/account/${id}/reset-password`, { newPassword });
         if (res.data.success) {
           toast.success(res.data.message);
         }

@@ -32,7 +32,7 @@ export default function Timekeeping() {
   const fetchPersonalHistory = async () => {
     try {
       if (!employee.id) return;
-      const res = await axios.get(`http://localhost:5000/api/timekeeping?employeeId=${employee.id}`);
+      const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping?employeeId=${employee.id}`);
       if (res.data.success) {
         setAttendanceHistory(res.data.data);
         
@@ -58,13 +58,13 @@ export default function Timekeeping() {
   const fetchAllData = async () => {
     try {
       // Lấy toàn bộ báo cáo chấm công
-      const attRes = await axios.get(`http://localhost:5000/api/timekeeping`);
+      const attRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping`);
       if (attRes.data.success) {
         setAllAttendance(attRes.data.data);
       }
       
       // Lấy toàn bộ yêu cầu
-      const reqRes = await axios.get(`http://localhost:5000/api/timekeeping/requests`);
+      const reqRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping/requests`);
       if (reqRes.data.success) {
         setAllRequests(reqRes.data.data);
       }
@@ -84,7 +84,7 @@ export default function Timekeeping() {
 
   const handleCheckIn = async () => {
     try {
-      const res = await axios.post('http://localhost:5000/api/timekeeping/checkin', { MaNhanVien: employee.id });
+      const res = await axios.post('https://quanlynhansucf.onrender.com/api/timekeeping/checkin', { MaNhanVien: employee.id });
       if (res.data.success) {
         toast.success("Check-in thành công!");
         setIsCheckedIn(true);
@@ -99,7 +99,7 @@ export default function Timekeeping() {
 
   const handleCheckOut = async () => {
     try {
-      const res = await axios.post('http://localhost:5000/api/timekeeping/checkout', { MaNhanVien: employee.id });
+      const res = await axios.post('https://quanlynhansucf.onrender.com/api/timekeeping/checkout', { MaNhanVien: employee.id });
       if (res.data.success) {
         toast.success(`Check-out thành công! Số giờ làm: ${res.data.data.soGioLam}h`);
         setIsCheckedIn(false);
@@ -114,7 +114,7 @@ export default function Timekeeping() {
 
   const handleApproveRequest = async (id, status) => {
     try {
-      const res = await axios.put(`http://localhost:5000/api/timekeeping/request/${id}/status`, { status });
+      const res = await axios.put(`https://quanlynhansucf.onrender.com/api/timekeeping/request/${id}/status`, { status });
       if (res.data.success) {
         toast.success(status === 'approved' ? "Đã duyệt yêu cầu!" : "Đã từ chối yêu cầu!");
         fetchAllData(); // Refresh list
@@ -135,7 +135,7 @@ export default function Timekeeping() {
   const fetchTimesheets = async () => {
     try {
       if (employee.role === "1" || employee.role === "2") {
-        const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}`);
+        const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timesheets?month=${tsMonth}&year=${tsYear}`);
         if (res.data.success) {
           setTimesheets(res.data.data);
           const notes = {};
@@ -145,7 +145,7 @@ export default function Timekeeping() {
           setManagerGhiChu(notes);
         }
       } else if (employee.id) {
-        const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}&employeeId=${employee.id}`);
+        const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timesheets?month=${tsMonth}&year=${tsYear}&employeeId=${employee.id}`);
         if (res.data.success) {
           setPersonalTimesheet(res.data.data);
           setEmployeePhanHoi(res.data.data?.PhanHoiNV || "");
@@ -167,7 +167,7 @@ export default function Timekeeping() {
   const handleSendToEmployee = async (maBangCong) => {
     try {
       const ghiChu = managerGhiChu[maBangCong] || "";
-      const res = await axios.post("http://localhost:5000/api/timesheets/send-to-employee", {
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/send-to-employee", {
         maBangCong,
         ghiChu
       });
@@ -182,7 +182,7 @@ export default function Timekeeping() {
 
   const handleEmployeeReply = async (maBangCong, isAgree) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/timesheets/employee-reply", {
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/employee-reply", {
         maBangCong,
         phanHoi: isAgree ? "Đồng ý" : employeePhanHoi,
         isAgree
@@ -198,7 +198,7 @@ export default function Timekeeping() {
 
   const handleSubmitToAdmin = async (maBangCong) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/timesheets/submit-to-admin", {
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/submit-to-admin", {
         maBangCong
       });
       if (res.data.success) {

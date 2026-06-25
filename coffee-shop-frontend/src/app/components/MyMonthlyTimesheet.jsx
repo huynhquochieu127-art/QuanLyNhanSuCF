@@ -31,7 +31,7 @@ export default function MyMonthlyTimesheet() {
     setLoading(true);
     try {
       // 1. Lấy thông tin bảng công cá nhân từ API
-      const res = await axios.get(`http://localhost:5000/api/timesheets?month=${tsMonth}&year=${tsYear}&employeeId=${employee.id}`);
+      const res = await axios.get(`https://quanlynhansucf.onrender.com/api/timesheets?month=${tsMonth}&year=${tsYear}&employeeId=${employee.id}`);
       if (res.data.success) {
         setPersonalTimesheet(res.data.data);
         setEmployeePhanHoi(res.data.data?.PhanHoiNV || "");
@@ -40,7 +40,7 @@ export default function MyMonthlyTimesheet() {
       }
 
       // 2. Lấy dữ liệu chấm công thực tế để điền vào lưới ngày
-      const attRes = await axios.get(`http://localhost:5000/api/timekeeping?employeeId=${employee.id}`);
+      const attRes = await axios.get(`https://quanlynhansucf.onrender.com/api/timekeeping?employeeId=${employee.id}`);
       if (attRes.data.success) {
         setAllAttendance(attRes.data.data);
       }
@@ -58,7 +58,7 @@ export default function MyMonthlyTimesheet() {
 
   const handleEmployeeReply = async (isAgree) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/timesheets/employee-reply", {
+      const res = await axios.post("https://quanlynhansucf.onrender.com/api/timesheets/employee-reply", {
         maBangCong: personalTimesheet.MaBangCong,
         phanHoi: isAgree ? "Đồng ý" : employeePhanHoi,
         isAgree
